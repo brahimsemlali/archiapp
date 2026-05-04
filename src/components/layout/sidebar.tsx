@@ -10,6 +10,7 @@ import {
   FileText,
   Settings,
   Building2,
+  Receipt,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -18,6 +19,7 @@ const navItems = [
   { href: "/projects", icon: FolderOpen, labelKey: "projects" },
   { href: "/clients", icon: Users, labelKey: "clients" },
   { href: "/contracts", icon: FileText, labelKey: "contracts" },
+  { href: "/devis", icon: Receipt, labelKey: "devis" },
   { href: "/settings", icon: Settings, labelKey: "settings" },
 ] as const;
 

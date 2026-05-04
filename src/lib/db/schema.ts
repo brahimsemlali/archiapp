@@ -78,6 +78,22 @@ export const contractStatusEnum = pgEnum("contract_status", [
 export const shareResourceTypeEnum = pgEnum("share_resource_type", [
   "file",
   "folder",
+  "project",
+]);
+
+export const devisStatusEnum = pgEnum("devis_status", [
+  "brouillon",
+  "envoye",
+  "accepte",
+  "refuse",
+  "expire",
+]);
+
+export const factureStatusEnum = pgEnum("facture_status", [
+  "brouillon",
+  "envoyee",
+  "payee",
+  "annulee",
 ]);
 
 // ─── Tables ───────────────────────────────────────────────────────────────────
@@ -195,6 +211,48 @@ export const shareLinks = pgTable("share_links", {
   accessedCount: integer("accessed_count").notNull().default(0),
   lastAccessedAt: timestamp("last_accessed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const devis = pgTable("devis", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id),
+  number: text("number").notNull(),
+  title: text("title").notNull(),
+  status: devisStatusEnum("status").notNull().default("brouillon"),
+  items: jsonb("items").notNull().default([]),
+  subtotalCentimes: bigint("subtotal_centimes", { mode: "number" }).notNull().default(0),
+  tvaRate: numeric("tva_rate").notNull().default("20.00"),
+  tvaCentimes: bigint("tva_centimes", { mode: "number" }).notNull().default(0),
+  totalCentimes: bigint("total_centimes", { mode: "number" }).notNull().default(0),
+  notes: text("notes"),
+  validUntil: date("valid_until"),
+  metadata: jsonb("metadata").notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const factures = pgTable("factures", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  clientId: uuid("client_id").notNull().references(() => clients.id),
+  devisId: uuid("devis_id").references(() => devis.id, { onDelete: "set null" }),
+  number: text("number").notNull(),
+  title: text("title").notNull(),
+  status: factureStatusEnum("status").notNull().default("brouillon"),
+  items: jsonb("items").notNull().default([]),
+  subtotalCentimes: bigint("subtotal_centimes", { mode: "number" }).notNull().default(0),
+  tvaRate: numeric("tva_rate").notNull().default("20.00"),
+  tvaCentimes: bigint("tva_centimes", { mode: "number" }).notNull().default(0),
+  totalCentimes: bigint("total_centimes", { mode: "number" }).notNull().default(0),
+  notes: text("notes"),
+  dueDate: date("due_date"),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+  metadata: jsonb("metadata").notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const activityLog = pgTable("activity_log", {

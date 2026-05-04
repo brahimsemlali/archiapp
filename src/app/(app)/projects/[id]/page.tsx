@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowLeft, Edit, MapPin, Ruler, Calendar, Plus } from "lucide-react";
+import { SharePortalButton } from "@/components/projects/share-portal-button";
 import { formatDate, formatMAD, formatRelative } from "@/lib/format";
 
 const PHASE_LABELS: Record<string, string> = {
@@ -33,7 +34,7 @@ export default async function ProjectDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: project }, { data: contracts }, { data: files }, { data: activityLog }] = await Promise.all([
+  const [{ data: project }, { data: contracts }, { data: files }, { data: activityLog }, { data: portalLink }] = await Promise.all([
     supabase
       .from("projects")
       .select("*, clients(id, name)")
@@ -56,6 +57,12 @@ export default async function ProjectDetailPage({
       .eq("project_id", id)
       .order("created_at", { ascending: false })
       .limit(10),
+    supabase
+      .from("share_links")
+      .select("token")
+      .eq("resource_id", id)
+      .eq("resource_type", "project")
+      .maybeSingle(),
   ]);
 
   if (!project) notFound();
@@ -78,8 +85,12 @@ export default async function ProjectDetailPage({
                 </Link>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Badge variant="outline">{PHASE_LABELS[project.phase] ?? project.phase}</Badge>
+              <SharePortalButton
+                projectId={id}
+                existingToken={portalLink?.token ?? null}
+              />
               <Link href={`/projects/${id}/edit`}>
                 <Button variant="outline" size="sm">
                   <Edit className="h-4 w-4 mr-2" />

@@ -150,3 +150,9 @@
 .ProseMirror:focus {
   outline: none;
 }
+
+@media print {
+  body > * { display: none !important; }
+  #devis-print { display: block !important; }
+  nav, aside, header { display: none !important; }
+}
