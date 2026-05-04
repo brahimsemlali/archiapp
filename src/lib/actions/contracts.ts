@@ -2,8 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { contractGenerateSchema, contractAiResponseSchema, type ContractAiResponse } from "@/lib/validators/contract";
-import { anthropic, AI_MODEL } from "@/lib/ai/anthropic";
-import { CONTRACT_SYSTEM_PROMPT, CONTRACT_PROMPT_VERSION } from "@/lib/ai/prompts/contract";
+import { nvidiaClient, NVIDIA_MODEL, NVIDIA_PROMPT_VERSION } from "@/lib/ai/nvidia";
+import { CONTRACT_SYSTEM_PROMPT } from "@/lib/ai/prompts/contract";
 import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
 
@@ -18,52 +18,94 @@ async function getWorkspaceId(supabase: Awaited<ReturnType<typeof createClient>>
   return data?.id ?? null;
 }
 
+async function collectStream(userPrompt: string): Promise<string> {
+  const stream = await nvidiaClient.chat.completions.create(
+    {
+      model: NVIDIA_MODEL,
+      messages: [
+        { role: "system", content: CONTRACT_SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.7,
+      top_p: 1,
+      max_tokens: 8192,
+      stream: true,
+    },
+    {
+      body: {
+        extra_body: {
+          chat_template_kwargs: {
+            enable_thinking: true,
+            clear_thinking: true,
+          },
+        },
+      },
+    }
+  );
+
+  let content = "";
+  for await (const chunk of stream) {
+    const delta = chunk.choices[0]?.delta;
+    if (delta && "content" in delta && delta.content) {
+      content += delta.content;
+    }
+  }
+  return content;
+}
+
 async function callAI(userPrompt: string): Promise<Result<ContractAiResponse>> {
-  const message = await anthropic.messages.create({
-    model: AI_MODEL,
-    max_tokens: 4096,
-    system: CONTRACT_SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userPrompt }],
-  });
+  let rawText: string;
+  try {
+    rawText = await collectStream(userPrompt);
+  } catch (err) {
+    return { ok: false, error: `Erreur API NVIDIA : ${err instanceof Error ? err.message : String(err)}` };
+  }
 
-  const rawText = message.content[0]?.type === "text" ? message.content[0].text : "";
-
-  // Extract JSON from the response (AI may wrap it in markdown)
-  const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
+  // Extract JSON — AI may wrap it in markdown code fences
+  const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/) ?? rawText.match(/(\{[\s\S]*\})/);
+  const jsonStr = jsonMatch?.[1] ?? jsonMatch?.[0];
+  if (!jsonStr) {
     return { ok: false, error: "La réponse de l'IA n'est pas au format attendu." };
   }
 
-  const parsed = contractAiResponseSchema.safeParse(JSON.parse(jsonMatch[0]));
-  if (!parsed.success) {
-    // Retry once
-    const retry = await anthropic.messages.create({
-      model: AI_MODEL,
-      max_tokens: 4096,
-      system: CONTRACT_SYSTEM_PROMPT,
-      messages: [
-        { role: "user", content: userPrompt },
-        { role: "assistant", content: rawText },
-        {
-          role: "user",
-          content:
-            "Ta réponse précédente n'était pas du JSON valide conforme au schéma. Renvoie uniquement le JSON strict : { \"title\": string, \"sections\": [{\"heading\": string, \"body\": string}] }",
-        },
-      ],
-    });
-    const retryText = retry.content[0]?.type === "text" ? retry.content[0].text : "";
-    const retryMatch = retryText.match(/\{[\s\S]*\}/);
-    if (!retryMatch) {
-      return { ok: false, error: "Échec de la génération du contrat. Veuillez réessayer." };
-    }
-    const retryParsed = contractAiResponseSchema.safeParse(JSON.parse(retryMatch[0]));
-    if (!retryParsed.success) {
-      return { ok: false, error: "Échec de la génération du contrat. Veuillez réessayer." };
-    }
-    return { ok: true, data: retryParsed.data };
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(jsonStr);
+  } catch {
+    return { ok: false, error: "Le JSON retourné par l'IA est invalide." };
   }
 
-  return { ok: true, data: parsed.data };
+  const validated = contractAiResponseSchema.safeParse(parsedJson);
+  if (!validated.success) {
+    // Retry once with a stricter prompt
+    let retryRaw: string;
+    try {
+      retryRaw = await collectStream(
+        userPrompt +
+          '\n\nIMPORTANT: Renvoie UNIQUEMENT du JSON strict sans aucun texte autour. Format exact: { "title": "...", "sections": [{ "heading": "...", "body": "..." }] }'
+      );
+    } catch {
+      return { ok: false, error: "Échec de la génération. Veuillez réessayer." };
+    }
+    const retryMatch = retryRaw.match(/```(?:json)?\s*([\s\S]*?)```/) ?? retryRaw.match(/(\{[\s\S]*\})/);
+    const retryStr = retryMatch?.[1] ?? retryMatch?.[0];
+    if (!retryStr) return { ok: false, error: "Échec de la génération. Veuillez réessayer." };
+
+    let retryJson: unknown;
+    try {
+      retryJson = JSON.parse(retryStr);
+    } catch {
+      return { ok: false, error: "Échec de la génération. Veuillez réessayer." };
+    }
+
+    const retryValidated = contractAiResponseSchema.safeParse(retryJson);
+    if (!retryValidated.success) {
+      return { ok: false, error: "Échec de la génération. Veuillez réessayer." };
+    }
+    return { ok: true, data: retryValidated.data };
+  }
+
+  return { ok: true, data: validated.data };
 }
 
 export async function generateContractAction(
@@ -78,7 +120,6 @@ export async function generateContractAction(
   const workspaceId = await getWorkspaceId(supabase);
   if (!workspaceId) return { ok: false, error: "Non authentifié." };
 
-  // Fetch context data
   const [clientRes, projectRes, firmRes] = await Promise.all([
     supabase.from("clients").select("name, type, address, ice, cin").eq("id", parsed.data.clientId).single(),
     parsed.data.projectId
@@ -119,7 +160,7 @@ export async function generateContractAction(
       content_html: contentHtml,
       ai_prompt: userPrompt,
       ai_response_raw: JSON.stringify(contractData),
-      ai_model: `${AI_MODEL}@${CONTRACT_PROMPT_VERSION}`,
+      ai_model: `${NVIDIA_MODEL}@${NVIDIA_PROMPT_VERSION}`,
       status: "brouillon",
       version: 1,
     })
@@ -133,7 +174,7 @@ export async function generateContractAction(
     project_id: parsed.data.projectId ?? null,
     client_id: parsed.data.clientId,
     action: "contract.generated",
-    metadata: { title: contractData.title, ai_model: AI_MODEL },
+    metadata: { title: contractData.title, ai_model: NVIDIA_MODEL },
   });
 
   revalidatePath("/contracts");
