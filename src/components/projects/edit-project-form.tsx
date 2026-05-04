@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ProjectForm } from "./project-form";
-import { updateProjectAction } from "@/lib/actions/projects";
+import { updateProjectAction, archiveProjectAction } from "@/lib/actions/projects";
 import type { ProjectFormValues } from "@/lib/validators/project";
 import { toast } from "sonner";
 import { centimsToInput } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Loader2, Archive } from "lucide-react";
 
 interface EditProjectFormProps {
   project: {
@@ -29,6 +31,7 @@ interface EditProjectFormProps {
 
 export function EditProjectForm({ project, clients }: EditProjectFormProps) {
   const [loading, setLoading] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const router = useRouter();
 
   async function handleSubmit(values: ProjectFormValues) {
@@ -45,27 +48,60 @@ export function EditProjectForm({ project, clients }: EditProjectFormProps) {
     router.push(`/projects/${project.id}`);
   }
 
+  async function handleArchive() {
+    if (!confirm("Archiver ce projet ? Il ne sera plus visible dans la liste active.")) return;
+    setArchiving(true);
+    const result = await archiveProjectAction(project.id);
+    setArchiving(false);
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success("Projet archivé.");
+    router.push("/projects");
+  }
+
   return (
-    <ProjectForm
-      clients={clients}
-      defaultValues={{
-        title: project.title,
-        clientId: project.client_id,
-        type: project.type as ProjectFormValues["type"],
-        address: project.address ?? undefined,
-        surfaceM2: project.surface_m2 ?? undefined,
-        phase: project.phase as ProjectFormValues["phase"],
-        status: project.status as ProjectFormValues["status"],
-        budgetEstimate: project.budget_estimate_centimes
-          ? centimsToInput(project.budget_estimate_centimes)
-          : undefined,
-        fees: project.fees_centimes ? centimsToInput(project.fees_centimes) : undefined,
-        startDate: project.start_date ?? undefined,
-        targetEndDate: project.target_end_date ?? undefined,
-        notes: project.notes ?? undefined,
-      }}
-      onSubmit={handleSubmit}
-      loading={loading}
-    />
+    <div className="space-y-8">
+      <ProjectForm
+        clients={clients}
+        defaultValues={{
+          title: project.title,
+          clientId: project.client_id,
+          type: project.type as ProjectFormValues["type"],
+          address: project.address ?? undefined,
+          surfaceM2: project.surface_m2 ?? undefined,
+          phase: project.phase as ProjectFormValues["phase"],
+          status: project.status as ProjectFormValues["status"],
+          budgetEstimate: project.budget_estimate_centimes
+            ? centimsToInput(project.budget_estimate_centimes)
+            : undefined,
+          fees: project.fees_centimes ? centimsToInput(project.fees_centimes) : undefined,
+          startDate: project.start_date ?? undefined,
+          targetEndDate: project.target_end_date ?? undefined,
+          notes: project.notes ?? undefined,
+        }}
+        onSubmit={handleSubmit}
+        loading={loading}
+      />
+
+      <div className="border-t pt-6">
+        <p className="text-sm font-medium text-muted-foreground mb-3">Zone de danger</p>
+        <Button
+          type="button"
+          variant="outline"
+          className="text-destructive border-destructive/30 hover:bg-destructive/5"
+          onClick={handleArchive}
+          disabled={archiving}
+        >
+          {archiving ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Archive className="mr-2 h-4 w-4" />
+          )}
+          Archiver ce projet
+        </Button>
+      </div>
+    </div>
   );
 }

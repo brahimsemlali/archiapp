@@ -11,12 +11,17 @@ export default async function NewContractPage({
   const params = await searchParams;
   const supabase = await createClient();
 
-  const [{ data: clients }, { data: project }] = await Promise.all([
+  const [{ data: clients }, { data: projects }, { data: project }] = await Promise.all([
     supabase
       .from("clients")
       .select("id, name, type")
       .is("archived_at", null)
       .order("name"),
+    supabase
+      .from("projects")
+      .select("id, title, client_id, phase")
+      .is("archived_at", null)
+      .order("title"),
     params.projectId
       ? supabase
           .from("projects")
@@ -42,6 +47,7 @@ export default async function NewContractPage({
       <div className="bg-white border rounded-lg p-6">
         <ContractGenerateForm
           clients={clients ?? []}
+          projects={projects ?? []}
           preselectedProjectId={project?.id}
           preselectedClientId={project?.client_id ?? params.clientId}
         />

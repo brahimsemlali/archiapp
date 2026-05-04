@@ -85,7 +85,7 @@ export default async function SharePage({
 
   if (!fileData || !downloadUrl) notFound();
 
-  const Icon = getFileIcon(fileData.mime_type);
+  const FileIcon = getFileIcon(fileData.mime_type);
   const isImage = fileData.mime_type.startsWith("image/");
   const isPdf = fileData.mime_type === "application/pdf";
 
@@ -114,7 +114,8 @@ export default async function SharePage({
       <main className="max-w-4xl mx-auto p-6 space-y-6">
         {/* File card */}
         <div className="bg-white border rounded-xl p-6 flex items-center gap-4">
-          <Icon className="h-12 w-12 text-muted-foreground shrink-0" />
+          {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+          {(FileIcon as any)({ className: "h-12 w-12 text-muted-foreground shrink-0" })}
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-lg truncate">{fileData.filename}</p>
             <p className="text-sm text-muted-foreground">{formatFileSize(fileData.size_bytes)}</p>

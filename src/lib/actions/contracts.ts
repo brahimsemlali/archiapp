@@ -216,6 +216,24 @@ export async function updateContractContentAction(
   return { ok: true, data: undefined };
 }
 
+export async function archiveContractAction(contractId: string): Promise<Result<void>> {
+  const supabase = await createClient();
+  const workspaceId = await getWorkspaceId(supabase);
+  if (!workspaceId) return { ok: false, error: "Non authentifié." };
+
+  const { error } = await supabase
+    .from("contracts")
+    .update({ status: "archive", updated_at: new Date().toISOString() })
+    .eq("id", contractId)
+    .eq("workspace_id", workspaceId);
+
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath(`/contracts/${contractId}`);
+  revalidatePath("/contracts");
+  return { ok: true, data: undefined };
+}
+
 export async function finalizeContractAction(contractId: string): Promise<Result<void>> {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId(supabase);

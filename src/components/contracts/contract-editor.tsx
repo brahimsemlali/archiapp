@@ -14,9 +14,10 @@ import {
   Bold,
   Italic,
   Heading2,
+  Archive,
 } from "lucide-react";
 import { toast } from "sonner";
-import { updateContractContentAction, finalizeContractAction } from "@/lib/actions/contracts";
+import { updateContractContentAction, finalizeContractAction, archiveContractAction } from "@/lib/actions/contracts";
 
 interface ContractSection {
   heading: string;
@@ -46,7 +47,9 @@ function buildHtmlFromContent(content: ContractContent): string {
 export function ContractEditor({ contractId, initialContent, status }: ContractEditorProps) {
   const [saving, setSaving] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const isFinalized = status === "finalise";
+  const isArchived = status === "archive";
 
   const initialHtml = initialContent
     ? buildHtmlFromContent(initialContent)
@@ -55,7 +58,7 @@ export function ContractEditor({ contractId, initialContent, status }: ContractE
   const editor = useEditor({
     extensions: [StarterKit],
     content: initialHtml,
-    editable: !isFinalized,
+    editable: !isFinalized && !isArchived,
     editorProps: {
       attributes: {
         class:
@@ -105,6 +108,18 @@ export function ContractEditor({ contractId, initialContent, status }: ContractE
 
   const handleExportPdf = useCallback(async () => {
     window.open(`/api/contracts/${contractId}/pdf`, "_blank");
+  }, [contractId]);
+
+  const handleArchive = useCallback(async () => {
+    if (!confirm("Archiver ce contrat ? Il ne sera plus visible par défaut.")) return;
+    setArchiving(true);
+    const result = await archiveContractAction(contractId);
+    setArchiving(false);
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success("Contrat archivé.");
   }, [contractId]);
 
   return (
@@ -166,9 +181,31 @@ export function ContractEditor({ contractId, initialContent, status }: ContractE
         )}
 
         {isFinalized && (
-          <Badge variant="default" className="gap-1">
-            <CheckCircle className="h-3 w-3" />
-            Finalisé
+          <>
+            <Badge variant="default" className="gap-1">
+              <CheckCircle className="h-3 w-3" />
+              Finalisé
+            </Badge>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleArchive}
+              disabled={archiving}
+              className="text-muted-foreground"
+            >
+              {archiving ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Archive className="mr-2 h-4 w-4" />
+              )}
+              Archiver
+            </Button>
+          </>
+        )}
+        {isArchived && (
+          <Badge variant="outline" className="gap-1">
+            <Archive className="h-3 w-3" />
+            Archivé
           </Badge>
         )}
       </div>

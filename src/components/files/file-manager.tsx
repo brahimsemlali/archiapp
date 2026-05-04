@@ -3,7 +3,6 @@
 import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Upload,
   File,
@@ -14,10 +13,10 @@ import {
   History,
   Loader2,
   FolderOpen,
-  X,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { uploadFileAction, getFileDownloadUrl, createShareLinkAction } from "@/lib/actions/files";
+import { uploadFileAction, getFileDownloadUrl, deleteFileAction } from "@/lib/actions/files";
 import { formatFileSize, formatDate } from "@/lib/format";
 import { FilePreview } from "./file-preview";
 import { ShareLinkDialog } from "./share-link-dialog";
@@ -108,6 +107,16 @@ export function FileManager({ projectId, filesByFolder, allFiles, defaultFolders
     a.href = result.data;
     a.download = file.filename;
     a.click();
+  };
+
+  const handleDelete = async (file: FileRow) => {
+    if (!confirm(`Supprimer "${file.filename}" ? Cette action est irréversible.`)) return;
+    const result = await deleteFileAction(file.id);
+    if (!result.ok) {
+      toast.error(result.error);
+    } else {
+      toast.success(`${file.filename} supprimé.`);
+    }
   };
 
   const handlePreview = async (file: FileRow) => {
@@ -262,6 +271,15 @@ export function FileManager({ projectId, filesByFolder, allFiles, defaultFolders
                         onClick={() => handleDownload(file)}
                       >
                         <Download className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                        title="Supprimer"
+                        onClick={() => handleDelete(file)}
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>

@@ -5,8 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, Edit, MapPin, Ruler, Calendar, FileText, Plus } from "lucide-react";
-import { formatDate, formatMAD, centimsToInput } from "@/lib/format";
+import { ArrowLeft, Edit, MapPin, Ruler, Calendar, Plus } from "lucide-react";
+import { formatDate, formatMAD } from "@/lib/format";
 
 const PHASE_LABELS: Record<string, string> = {
   esquisse: "Esquisse", aps: "APS", apd: "APD", pc: "PC",

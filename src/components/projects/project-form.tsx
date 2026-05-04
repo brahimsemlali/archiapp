@@ -62,7 +62,6 @@ export function ProjectForm({ clients, defaultValues, onSubmit, loading }: Proje
     register,
     handleSubmit,
     setValue,
-    watch,
     formState: { errors },
   } = useForm<ProjectFormValues>({
     resolver: zodResolver(projectSchema),

@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { EditProjectForm } from "@/components/projects/edit-project-form";
-import { centimsToInput } from "@/lib/format";
 
 export default async function EditProjectPage({
   params,

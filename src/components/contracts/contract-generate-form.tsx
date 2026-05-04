@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm, Controller } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { contractGenerateSchema, type ContractGenerateValues } from "@/lib/validators/contract";
 import { generateContractAction } from "@/lib/actions/contracts";
@@ -47,24 +47,27 @@ const PAYMENT_TEMPLATES = [
 
 interface ContractGenerateFormProps {
   clients: { id: string; name: string; type: string }[];
+  projects: { id: string; title: string; client_id: string; phase: string }[];
   preselectedProjectId?: string;
   preselectedClientId?: string;
 }
 
 export function ContractGenerateForm({
   clients,
+  projects,
   preselectedProjectId,
   preselectedClientId,
 }: ContractGenerateFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [selectedPhases, setSelectedPhases] = useState<string[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string | undefined>(preselectedClientId);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(preselectedProjectId);
 
   const {
     register,
     handleSubmit,
     setValue,
-    watch,
     formState: { errors },
   } = useForm<ContractGenerateValues>({
     resolver: zodResolver(contractGenerateSchema),
@@ -76,6 +79,33 @@ export function ContractGenerateForm({
       paymentSchedule: "30% à la signature, 30% à la remise de l'APD, 30% au dépôt du PC, 10% à la réception.",
     },
   });
+
+  // Projects filtered by selected client
+  const clientProjects = selectedClientId
+    ? projects.filter((p) => p.client_id === selectedClientId)
+    : projects;
+
+  function handleClientChange(clientId: string | null) {
+    const id = clientId ?? undefined;
+    setSelectedClientId(id);
+    setValue("clientId", id ?? "");
+    // Clear project if it no longer belongs to the new client
+    if (selectedProjectId) {
+      const stillValid = projects.find(
+        (p) => p.id === selectedProjectId && p.client_id === id
+      );
+      if (!stillValid) {
+        setSelectedProjectId(undefined);
+        setValue("projectId", undefined);
+      }
+    }
+  }
+
+  function handleProjectChange(projectId: string | null) {
+    const id = projectId === "none" ? undefined : projectId ?? undefined;
+    setSelectedProjectId(id);
+    setValue("projectId", id);
+  }
 
   function togglePhase(phase: string) {
     const next = selectedPhases.includes(phase)
@@ -106,7 +136,7 @@ export function ContractGenerateForm({
           <Label>Client *</Label>
           <Select
             defaultValue={preselectedClientId}
-            onValueChange={(v) => { if (v) setValue("clientId", v); }}
+            onValueChange={handleClientChange}
           >
             <SelectTrigger>
               <SelectValue placeholder="Sélectionner un client" />
@@ -138,6 +168,25 @@ export function ContractGenerateForm({
             </SelectContent>
           </Select>
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Projet associé</Label>
+        <Select
+          defaultValue={preselectedProjectId ?? "none"}
+          onValueChange={handleProjectChange}
+          key={selectedClientId}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Sélectionner un projet (optionnel)" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Aucun projet</SelectItem>
+            {clientProjects.map((p) => (
+              <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-2">

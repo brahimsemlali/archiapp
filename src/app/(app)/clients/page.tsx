@@ -3,7 +3,6 @@ import { getTranslations } from "next-intl/server";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Plus, User, Building2, Phone, Mail } from "lucide-react";
 import { ClientsSearch } from "@/components/clients/clients-search";
 

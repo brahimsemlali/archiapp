@@ -8,7 +8,6 @@ import {
   integer,
   numeric,
   jsonb,
-  boolean,
   date,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
