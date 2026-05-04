@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/strapexmaroc/archiapp rev-parse --show-toplevel)",
+      "Bash(pnpm -v)",
+      "Bash(npm -v)",
+      "Bash(npm install *)",
+      "Bash(curl -fsSL https://get.pnpm.io/install.sh)",
+      "Bash(sh -)",
+      "Bash(export PNPM_HOME=\"/Users/strapexmaroc/Library/pnpm\")",
+      "Bash(export PATH=\"$PNPM_HOME:$PATH\")",
+      "Bash(git init *)",
+      "Bash(git remote *)",
+      "Bash(cp -r /tmp/archidesk-tmp/. /Users/strapexmaroc/archiapp/ --no-clobber)",
+      "Bash(rsync -a --exclude='.git' --exclude='CLAUDE.md' /tmp/archidesk-tmp/ /Users/strapexmaroc/archiapp/)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm dlx *)",
+      "Bash(pnpm exec *)"
+    ]
+  }
+}
