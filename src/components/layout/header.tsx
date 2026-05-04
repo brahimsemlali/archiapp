@@ -10,8 +10,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { LogOut, User } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { MobileNav } from "./mobile-nav";
 
 interface HeaderProps {
   userEmail?: string;
@@ -32,7 +33,8 @@ export function Header({ userEmail }: HeaderProps) {
     : "U";
 
   return (
-    <header className="h-16 border-b bg-white flex items-center justify-end px-6">
+    <header className="h-16 border-b bg-white flex items-center justify-between px-4 md:justify-end md:px-6">
+      <MobileNav />
       <DropdownMenu>
         <DropdownMenuTrigger>
           <Button variant="ghost" size="sm" className="gap-2">

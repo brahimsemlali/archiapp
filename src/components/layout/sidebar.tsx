@@ -26,7 +26,7 @@ export function Sidebar() {
   const t = useTranslations("nav");
 
   return (
-    <aside className="w-60 shrink-0 border-r bg-white flex flex-col h-screen sticky top-0">
+    <aside className="hidden md:flex w-60 shrink-0 border-r bg-white flex-col h-screen sticky top-0">
       <div className="h-16 flex items-center gap-2 px-4 border-b">
         <Building2 className="h-6 w-6 text-primary" />
         <span className="font-semibold text-lg tracking-tight">ArchiDesk</span>

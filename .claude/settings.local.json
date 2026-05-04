@@ -15,7 +15,10 @@
       "Bash(rsync -a --exclude='.git' --exclude='CLAUDE.md' /tmp/archidesk-tmp/ /Users/strapexmaroc/archiapp/)",
       "Bash(pnpm add *)",
       "Bash(pnpm dlx *)",
-      "Bash(pnpm exec *)"
+      "Bash(pnpm exec *)",
+      "Bash(git push *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

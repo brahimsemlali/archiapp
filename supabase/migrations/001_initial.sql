@@ -274,3 +274,39 @@ $$;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- ─── Storage bucket ───────────────────────────────────────────────────────────
+-- Run this in Supabase Dashboard → Storage → New Bucket
+-- Name: project-files, Private: true
+-- Or via SQL:
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('project-files', 'project-files', false, 104857600)
+on conflict do nothing;
+
+-- Storage RLS: only workspace members can read/write their files
+create policy "storage_select" on storage.objects for select
+  using (
+    bucket_id = 'project-files' and
+    auth.uid() is not null and
+    (storage.foldername(name))[1] in (
+      select id::text from workspaces where owner_id = auth.uid()
+    )
+  );
+
+create policy "storage_insert" on storage.objects for insert
+  with check (
+    bucket_id = 'project-files' and
+    auth.uid() is not null and
+    (storage.foldername(name))[1] in (
+      select id::text from workspaces where owner_id = auth.uid()
+    )
+  );
+
+create policy "storage_delete" on storage.objects for delete
+  using (
+    bucket_id = 'project-files' and
+    auth.uid() is not null and
+    (storage.foldername(name))[1] in (
+      select id::text from workspaces where owner_id = auth.uid()
+    )
+  );
