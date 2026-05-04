@@ -27,11 +27,14 @@ export default async function ContractDetailPage({
 
   const { data: contract } = await supabase
     .from("contracts")
-    .select("*, clients(name), projects(title)")
+    .select("*, clients(id, name), projects(id, title)")
     .eq("id", id)
     .single();
 
   if (!contract) notFound();
+
+  const client = contract.clients as { id: string; name: string } | null;
+  const project = contract.projects as { id: string; title: string } | null;
 
   return (
     <div className="space-y-4">
@@ -46,12 +49,19 @@ export default async function ContractDetailPage({
               {STATUS_LABELS[contract.status] ?? contract.status}
             </Badge>
           </div>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {(contract.clients as { name: string } | null)?.name ?? "—"}
-            {(contract.projects as { title: string } | null)?.title
-              ? ` · ${(contract.projects as { title: string }).title}`
-              : ""}
-            {" · "}v{contract.version}
+          <p className="text-sm text-muted-foreground mt-0.5 flex items-center gap-1 flex-wrap">
+            {client && (
+              <Link href={`/clients/${client.id}`} className="hover:underline">
+                {client.name}
+              </Link>
+            )}
+            {client && project && <span>·</span>}
+            {project && (
+              <Link href={`/projects/${project.id}`} className="hover:underline">
+                {project.title}
+              </Link>
+            )}
+            <span>· v{contract.version}</span>
           </p>
         </div>
       </div>

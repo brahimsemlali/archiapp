@@ -6,12 +6,24 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowLeft, Edit, MapPin, Ruler, Calendar, Plus } from "lucide-react";
-import { formatDate, formatMAD } from "@/lib/format";
+import { formatDate, formatMAD, formatRelative } from "@/lib/format";
 
 const PHASE_LABELS: Record<string, string> = {
   esquisse: "Esquisse", aps: "APS", apd: "APD", pc: "PC",
   dce: "DCE", chantier: "Chantier", reception: "Réception", termine: "Terminé",
 };
+
+const ACTION_LABELS: Record<string, string> = {
+  "project.created": "Projet créé",
+  "contract.generated": "Contrat généré",
+  "file.uploaded": "Fichier déposé",
+};
+
+function activityLabel(action: string, metadata: Record<string, unknown>): string {
+  const base = ACTION_LABELS[action] ?? action;
+  const name = (metadata.title ?? metadata.filename) as string | undefined;
+  return name ? `${base} : ${name}` : base;
+}
 
 export default async function ProjectDetailPage({
   params,
@@ -21,7 +33,7 @@ export default async function ProjectDetailPage({
   const { id } = await params;
   const supabase = await createClient();
 
-  const [{ data: project }, { data: contracts }, { data: files }] = await Promise.all([
+  const [{ data: project }, { data: contracts }, { data: files }, { data: activityLog }] = await Promise.all([
     supabase
       .from("projects")
       .select("*, clients(id, name)")
@@ -38,6 +50,12 @@ export default async function ProjectDetailPage({
       .eq("project_id", id)
       .order("created_at", { ascending: false })
       .limit(20),
+    supabase
+      .from("activity_log")
+      .select("id, action, metadata, created_at")
+      .eq("project_id", id)
+      .order("created_at", { ascending: false })
+      .limit(10),
   ]);
 
   if (!project) notFound();
@@ -131,17 +149,52 @@ export default async function ProjectDetailPage({
                     <span>{formatMAD(project.budget_estimate_centimes)}</span>
                   </div>
                 )}
+                {project.target_end_date && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Fin prévue</span>
+                    <span>{formatDate(project.target_end_date)}</span>
+                  </div>
+                )}
               </CardContent>
             </Card>
-            {project.notes && (
-              <Card>
-                <CardContent className="pt-6 text-sm">
-                  <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide mb-3">Notes</p>
-                  <p className="whitespace-pre-wrap text-sm">{project.notes}</p>
-                </CardContent>
-              </Card>
-            )}
+
+            <Card>
+              <CardContent className="pt-6 text-sm">
+                <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide mb-3">Activité récente</p>
+                {activityLog && activityLog.length > 0 ? (
+                  <ul className="space-y-2.5">
+                    {activityLog.map((log) => (
+                      <li key={log.id} className="flex items-start gap-2.5">
+                        <div className="h-1.5 w-1.5 mt-1.5 rounded-full bg-primary shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm leading-snug">
+                            {activityLabel(log.action, log.metadata as Record<string, unknown>)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatRelative(log.created_at)}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-muted-foreground text-xs">Aucune activité enregistrée.</p>
+                )}
+              </CardContent>
+            </Card>
           </div>
+
+          {project.notes && (
+            <Card>
+              <CardContent className="pt-6 text-sm">
+                <p className="font-medium text-muted-foreground text-xs uppercase tracking-wide mb-3">Notes</p>
+                <p className="whitespace-pre-wrap text-sm">{project.notes.slice(0, 400)}{project.notes.length > 400 ? "…" : ""}</p>
+                <Link href={`/projects/${id}/notes`} className="text-xs text-primary hover:underline mt-2 inline-block">
+                  Ouvrir l'éditeur de notes →
+                </Link>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="files" className="mt-4">
