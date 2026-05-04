@@ -52,6 +52,7 @@ export async function createProjectAction(values: ProjectFormValues): Promise<Re
   await supabase.from("activity_log").insert({
     workspace_id: workspaceId,
     project_id: data.id,
+    client_id: parsed.data.clientId,
     action: "project.created",
     metadata: { title: parsed.data.title },
   });

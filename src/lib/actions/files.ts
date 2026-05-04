@@ -1,6 +1,6 @@
 "use server";
 
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
 import crypto from "crypto";
@@ -78,12 +78,19 @@ export async function uploadFileAction(
 
   if (dbError) return { ok: false, error: dbError.message };
 
-  await supabase.from("activity_log").insert({
-    workspace_id: workspaceId,
-    project_id: projectId,
-    action: "file.uploaded",
-    metadata: { filename: file.name, folder, version: newVersion },
-  });
+  await Promise.all([
+    supabase.from("activity_log").insert({
+      workspace_id: workspaceId,
+      project_id: projectId,
+      action: "file.uploaded",
+      metadata: { filename: file.name, folder, version: newVersion },
+    }),
+    supabase
+      .from("projects")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", projectId)
+      .eq("workspace_id", workspaceId),
+  ]);
 
   revalidatePath(`/projects/${projectId}/files`);
   return { ok: true, data: { id: fileRow.id, filename: file.name } };

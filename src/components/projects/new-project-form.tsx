@@ -9,9 +9,11 @@ import { toast } from "sonner";
 
 interface NewProjectFormProps {
   clients: { id: string; name: string }[];
+  preselectedClientId?: string;
 }
 
-export function NewProjectForm({ clients }: NewProjectFormProps) {
+export function NewProjectForm({ clients, preselectedClientId }: NewProjectFormProps) {
+
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
@@ -29,5 +31,12 @@ export function NewProjectForm({ clients }: NewProjectFormProps) {
     router.push(`/projects/${result.data.id}`);
   }
 
-  return <ProjectForm clients={clients} onSubmit={handleSubmit} loading={loading} />;
+  return (
+    <ProjectForm
+      clients={clients}
+      onSubmit={handleSubmit}
+      loading={loading}
+      defaultValues={preselectedClientId ? { clientId: preselectedClientId } : undefined}
+    />
+  );
 }

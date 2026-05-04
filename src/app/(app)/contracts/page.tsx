@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, FileText } from "lucide-react";
 import { formatDate } from "@/lib/format";
+import { ContractsFilters } from "@/components/contracts/contracts-filters";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
   brouillon: "secondary",
@@ -25,14 +26,31 @@ const TYPE_LABELS: Record<string, string> = {
   autre: "Autre",
 };
 
-export default async function ContractsPage() {
+export default async function ContractsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string; type?: string }>;
+}) {
+  const params = await searchParams;
   const supabase = await createClient();
 
-  const { data: contracts } = await supabase
+  let query = supabase
     .from("contracts")
     .select("*, clients(name), projects(title)")
-    .neq("status", "archive")
     .order("created_at", { ascending: false });
+
+  // Status filter: default to excluding archived unless explicitly requested
+  if (params.status && params.status !== "all") {
+    query = query.eq("status", params.status);
+  } else if (!params.status) {
+    query = query.neq("status", "archive");
+  }
+
+  if (params.type && params.type !== "all") {
+    query = query.eq("type", params.type);
+  }
+
+  const { data: contracts } = await query;
 
   return (
     <div className="space-y-6">
@@ -45,6 +63,8 @@ export default async function ContractsPage() {
           </Button>
         </Link>
       </div>
+
+      <ContractsFilters />
 
       {contracts && contracts.length > 0 ? (
         <div className="space-y-2">
@@ -75,7 +95,7 @@ export default async function ContractsPage() {
       ) : (
         <div className="text-center py-16 text-muted-foreground">
           <FileText className="h-10 w-10 mx-auto mb-3 opacity-30" />
-          <p>Aucun contrat pour l'instant.</p>
+          <p>Aucun contrat ne correspond à ces critères.</p>
           <Link href="/contracts/new">
             <Button variant="outline" className="mt-4">Générer un contrat avec IA</Button>
           </Link>

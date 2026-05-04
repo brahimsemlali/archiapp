@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, FolderOpen } from "lucide-react";
 import { formatDate } from "@/lib/format";
+import { ProjectsFilters } from "@/components/projects/projects-filters";
 
 const PHASE_COLORS: Record<string, string> = {
   esquisse: "bg-slate-100 text-slate-700",
@@ -35,14 +36,53 @@ const PHASE_LABELS: Record<string, string> = {
   termine: "Terminé",
 };
 
-export default async function ProjectsPage() {
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; phase?: string; status?: string; client?: string }>;
+}) {
+  const params = await searchParams;
   const supabase = await createClient();
 
-  const { data: projects } = await supabase
-    .from("projects")
-    .select("*, clients(name)")
-    .is("archived_at", null)
-    .order("created_at", { ascending: false });
+  const [projectsRes, clientsRes] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("*, clients(id, name)")
+      .is("archived_at", null)
+      .order("updated_at", { ascending: false }),
+    supabase
+      .from("clients")
+      .select("id, name")
+      .is("archived_at", null)
+      .order("name"),
+  ]);
+
+  let projects = projectsRes.data ?? [];
+
+  // Apply client-side filters on top of the server result
+  // (Supabase free tier doesn't support OR + AND combinations cleanly in one query)
+  if (params.q) {
+    const q = params.q.toLowerCase();
+    projects = projects.filter((p) =>
+      p.title.toLowerCase().includes(q) ||
+      (p.clients as { name: string } | null)?.name.toLowerCase().includes(q)
+    );
+  }
+  if (params.phase && params.phase !== "all") {
+    projects = projects.filter((p) => p.phase === params.phase);
+  }
+  if (params.status && params.status !== "all") {
+    projects = projects.filter((p) => p.status === params.status);
+  }
+  if (params.client && params.client !== "all") {
+    projects = projects.filter(
+      (p) => (p.clients as { id: string; name: string } | null)?.id === params.client
+    );
+  }
+
+  const clients = clientsRes.data ?? [];
+  const hasFilters = params.q || (params.phase && params.phase !== "all") ||
+    (params.status && params.status !== "all") || (params.client && params.client !== "all");
 
   return (
     <div className="space-y-6">
@@ -56,7 +96,9 @@ export default async function ProjectsPage() {
         </Link>
       </div>
 
-      {projects && projects.length > 0 ? (
+      <ProjectsFilters clients={clients} />
+
+      {projects.length > 0 ? (
         <div className="space-y-2">
           {projects.map((project) => (
             <Link key={project.id} href={`/projects/${project.id}`}>
@@ -65,7 +107,7 @@ export default async function ProjectsPage() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{project.title}</p>
                     <p className="text-sm text-muted-foreground mt-0.5">
-                      {(project.clients as { name: string } | null)?.name ?? "—"} · {formatDate(project.created_at)}
+                      {(project.clients as { name: string } | null)?.name ?? "—"} · {formatDate(project.updated_at)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -89,10 +131,16 @@ export default async function ProjectsPage() {
       ) : (
         <div className="text-center py-16 text-muted-foreground">
           <FolderOpen className="h-10 w-10 mx-auto mb-3 opacity-30" />
-          <p>Aucun projet pour l'instant.</p>
-          <Link href="/projects/new">
-            <Button variant="outline" className="mt-4">Créer le premier projet</Button>
-          </Link>
+          <p>
+            {hasFilters
+              ? "Aucun projet ne correspond à ces filtres."
+              : "Aucun projet pour l'instant."}
+          </p>
+          {!hasFilters && (
+            <Link href="/projects/new">
+              <Button variant="outline" className="mt-4">Créer le premier projet</Button>
+            </Link>
+          )}
         </div>
       )}
     </div>

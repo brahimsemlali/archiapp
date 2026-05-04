@@ -3,7 +3,12 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { NewProjectForm } from "@/components/projects/new-project-form";
 
-export default async function NewProjectPage() {
+export default async function NewProjectPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ clientId?: string }>;
+}) {
+  const params = await searchParams;
   const supabase = await createClient();
   const { data: clients } = await supabase
     .from("clients")
@@ -20,7 +25,7 @@ export default async function NewProjectPage() {
         <h1 className="text-2xl font-bold tracking-tight">Nouveau projet</h1>
       </div>
       <div className="bg-white border rounded-lg p-6">
-        <NewProjectForm clients={clients ?? []} />
+        <NewProjectForm clients={clients ?? []} preselectedClientId={params.clientId} />
       </div>
     </div>
   );

@@ -177,6 +177,14 @@ export async function generateContractAction(
     metadata: { title: contractData.title, ai_model: NVIDIA_MODEL },
   });
 
+  if (parsed.data.projectId) {
+    await supabase
+      .from("projects")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", parsed.data.projectId)
+      .eq("workspace_id", workspaceId);
+  }
+
   revalidatePath("/contracts");
   if (parsed.data.projectId) revalidatePath(`/projects/${parsed.data.projectId}`);
 
