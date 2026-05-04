@@ -11,6 +11,7 @@ import {
   Settings,
   Building2,
   Receipt,
+  BadgeDollarSign,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/clients", icon: Users, labelKey: "clients" },
   { href: "/contracts", icon: FileText, labelKey: "contracts" },
   { href: "/devis", icon: Receipt, labelKey: "devis" },
+  { href: "/factures", icon: BadgeDollarSign, labelKey: "factures" },
   { href: "/settings", icon: Settings, labelKey: "settings" },
 ] as const;
 

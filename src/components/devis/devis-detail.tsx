@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { updateDevisStatusAction, deleteDevisAction } from "@/lib/actions/devis";
 import { formatDate, formatMAD } from "@/lib/format";
-import { Check, Send, X, Trash2, Loader2, Download, Edit, FileText } from "lucide-react";
+import { Check, Send, X, Trash2, Loader2, Download, Edit, FileText, Receipt } from "lucide-react";
 import Link from "next/link";
 import type { DevisItem } from "@/lib/validators/devis";
 import { useRouter } from "next/navigation";
@@ -110,6 +110,14 @@ export function DevisDetail({ devis: initial, client, project, firmProfile }: De
                 Refusé
               </Button>
             </>
+          )}
+          {status === "accepte" && (
+            <Link href={`/factures/new?fromDevis=${initial.id}`}>
+              <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+                <Receipt className="h-4 w-4 mr-2" />
+                Créer la facture
+              </Button>
+            </Link>
           )}
           <Button variant="outline" size="sm" onClick={handlePrint}>
             <Download className="h-4 w-4 mr-2" />PDF / Imprimer

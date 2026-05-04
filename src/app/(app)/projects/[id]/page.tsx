@@ -135,6 +135,7 @@ export default async function ProjectDetailPage({
           <TabsTrigger value="files">Fichiers ({files?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="contracts">Contrats ({contracts?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="notes">Notes</TabsTrigger>
+          <TabsTrigger value="visites">Chantier</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-4 space-y-4">
@@ -290,6 +291,24 @@ export default async function ProjectDetailPage({
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="visites" className="mt-4">
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-sm text-muted-foreground">Comptes-rendus de visite de chantier</p>
+            <Link href={`/projects/${id}/visites/new`}>
+              <Button size="sm">
+                <Plus className="h-4 w-4 mr-2" />
+                Nouvelle visite
+              </Button>
+            </Link>
+          </div>
+          <Link href={`/projects/${id}/visites`} className="block">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-center hover:shadow-sm transition-shadow">
+              <p className="text-sm font-medium text-amber-800">Voir toutes les visites de chantier</p>
+              <p className="text-xs text-amber-600 mt-1">Photos, observations, synthèse IA</p>
+            </div>
+          </Link>
         </TabsContent>
       </Tabs>
     </div>
