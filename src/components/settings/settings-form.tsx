@@ -1,19 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Loader2 } from "lucide-react";
+import { Loader2, Upload, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { updateFirmProfileAction, type FirmProfileValues } from "@/lib/actions/settings";
+import { uploadLogoAction } from "@/lib/actions/logo";
 
 interface SettingsFormProps {
   profile: {
     firm_name?: string | null;
     architect_name?: string | null;
+    logo_url?: string | null;
     address?: string | null;
     phone?: string | null;
     email?: string | null;
@@ -28,6 +30,10 @@ interface SettingsFormProps {
 
 export function SettingsForm({ profile }: SettingsFormProps) {
   const [loading, setLoading] = useState(false);
+  const [logoUrl, setLogoUrl] = useState(profile?.logo_url ?? "");
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
   const { register, handleSubmit } = useForm<FirmProfileValues>({
     defaultValues: {
       firmName: profile?.firm_name ?? "",
@@ -48,17 +54,64 @@ export function SettingsForm({ profile }: SettingsFormProps) {
     setLoading(true);
     const result = await updateFirmProfileAction(values);
     setLoading(false);
-
-    if (!result.ok) {
-      toast.error(result.error);
-      return;
-    }
-
+    if (!result.ok) { toast.error(result.error); return; }
     toast.success("Paramètres enregistrés.");
+  }
+
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingLogo(true);
+    const fd = new FormData();
+    fd.append("logo", file);
+    const result = await uploadLogoAction(fd);
+    setUploadingLogo(false);
+    if (!result.ok) { toast.error(result.error); return; }
+    setLogoUrl(result.data);
+    toast.success("Logo mis à jour.");
   }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      {/* Logo */}
+      <div>
+        <h3 className="text-sm font-medium mb-3">Logo du cabinet</h3>
+        <div className="flex items-center gap-4">
+          <div className="h-16 w-16 rounded-lg border bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoUrl} alt="Logo" className="h-full w-full object-contain p-1" />
+            ) : (
+              <Building2 className="h-8 w-8 text-muted-foreground opacity-40" />
+            )}
+          </div>
+          <div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={uploadingLogo}
+              onClick={() => logoInputRef.current?.click()}
+            >
+              {uploadingLogo
+                ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                : <Upload className="mr-2 h-4 w-4" />}
+              {logoUrl ? "Changer le logo" : "Téléverser un logo"}
+            </Button>
+            <p className="text-xs text-muted-foreground mt-1">PNG, JPG, SVG — max 2 Mo</p>
+          </div>
+          <input
+            ref={logoInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleLogoUpload}
+          />
+        </div>
+      </div>
+
+      <Separator />
+
       <div>
         <h3 className="text-sm font-medium mb-3">Identité du cabinet</h3>
         <div className="grid gap-4 sm:grid-cols-2">

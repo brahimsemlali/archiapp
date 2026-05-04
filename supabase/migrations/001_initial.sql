@@ -279,8 +279,14 @@ create trigger on_auth_user_created
 -- Run this in Supabase Dashboard → Storage → New Bucket
 -- Name: project-files, Private: true
 -- Or via SQL:
+-- project-files bucket (private, 100 MB limit)
 insert into storage.buckets (id, name, public, file_size_limit)
 values ('project-files', 'project-files', false, 104857600)
+on conflict do nothing;
+
+-- logos bucket (public, 2 MB limit)
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('logos', 'logos', true, 2097152)
 on conflict do nothing;
 
 -- Storage RLS: only workspace members can read/write their files

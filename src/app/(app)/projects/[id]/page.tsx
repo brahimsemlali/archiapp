@@ -101,7 +101,7 @@ export default async function ProjectDetailPage({
       </div>
 
       <Tabs defaultValue="overview">
-        <TabsList>
+        <TabsList className="w-full overflow-x-auto flex-nowrap justify-start">
           <TabsTrigger value="overview">Vue d'ensemble</TabsTrigger>
           <TabsTrigger value="files">Fichiers ({files?.length ?? 0})</TabsTrigger>
           <TabsTrigger value="contracts">Contrats ({contracts?.length ?? 0})</TabsTrigger>
@@ -208,12 +208,21 @@ export default async function ProjectDetailPage({
         </TabsContent>
 
         <TabsContent value="notes" className="mt-4">
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-sm text-muted-foreground">Bloc-notes Markdown du projet</p>
+            <Link href={`/projects/${id}/notes`}>
+              <Button size="sm">
+                <Plus className="h-4 w-4 mr-2" />
+                Ouvrir l'éditeur
+              </Button>
+            </Link>
+          </div>
           <Card>
             <CardContent className="pt-6">
               {project.notes ? (
-                <p className="whitespace-pre-wrap text-sm">{project.notes}</p>
+                <pre className="whitespace-pre-wrap text-sm font-sans">{project.notes.slice(0, 300)}{project.notes.length > 300 ? "…" : ""}</pre>
               ) : (
-                <p className="text-sm text-muted-foreground">Aucune note. Modifiez le projet pour ajouter des notes.</p>
+                <p className="text-sm text-muted-foreground">Aucune note pour l'instant.</p>
               )}
             </CardContent>
           </Card>
