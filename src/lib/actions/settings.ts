@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { WORKSPACE_ADMIN_ROLES, requireWorkspaceRole } from "@/lib/workspace";
 import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
 
@@ -20,37 +21,97 @@ export interface FirmProfileValues {
 
 export async function updateFirmProfileAction(values: FirmProfileValues): Promise<Result<void>> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Non authentifié." };
+  const context = await requireWorkspaceRole(supabase, WORKSPACE_ADMIN_ROLES);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
 
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id")
-    .eq("owner_id", user.id)
-    .single();
-
-  if (!workspace) return { ok: false, error: "Espace de travail introuvable." };
+  const firmName = values.firmName?.trim() || null;
+  const architectName = values.architectName?.trim() || null;
+  const address = values.address?.trim() || null;
+  const phone = values.phone?.trim() || null;
+  const email = values.email?.trim() || null;
+  const ice = values.ice?.trim() || null;
+  const rc = values.rc?.trim() || null;
+  const ifNumber = values.ifNumber?.trim() || null;
+  const cnss = values.cnss?.trim() || null;
+  const patente = values.patente?.trim() || null;
+  const iban = values.iban?.trim() || null;
 
   const { error } = await supabase
     .from("firm_profile")
     .upsert({
-      workspace_id: workspace.id,
-      firm_name: values.firmName,
-      architect_name: values.architectName,
-      address: values.address,
-      phone: values.phone,
-      email: values.email,
-      ice: values.ice,
-      rc: values.rc,
-      if_number: values.ifNumber,
-      cnss: values.cnss,
-      patente: values.patente,
-      iban: values.iban,
+      workspace_id: workspaceId,
+      firm_name: firmName,
+      architect_name: architectName,
+      address,
+      phone,
+      email,
+      ice,
+      rc,
+      if_number: ifNumber,
+      cnss,
+      patente,
+      iban,
       updated_at: new Date().toISOString(),
     });
 
   if (error) return { ok: false, error: error.message };
 
+  if (firmName) {
+    await supabase
+      .from("workspaces")
+      .update({ name: firmName, updated_at: new Date().toISOString() })
+      .eq("id", workspaceId);
+  }
+
+  await supabase.from("activity_log").insert({
+    workspace_id: workspaceId,
+    action: "settings.firm_profile_updated",
+    metadata: { firm_name: firmName },
+  });
+
+  revalidatePath("/settings");
+  revalidatePath("/onboarding");
+  revalidatePath("/dashboard");
+  return { ok: true, data: undefined };
+}
+
+export interface PortfolioValues {
+  slug: string;
+  enabled: boolean;
+  tagline: string | null;
+  specialties: string[] | null;
+}
+
+export async function updatePortfolioSettingsAction(values: PortfolioValues): Promise<Result<void>> {
+  const supabase = await createClient();
+  const context = await requireWorkspaceRole(supabase, WORKSPACE_ADMIN_ROLES);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
+
+  // Check slug uniqueness (excluding own workspace)
+  if (values.slug) {
+    const { data: existing } = await supabase
+      .from("firm_profile")
+      .select("workspace_id")
+      .eq("slug", values.slug)
+      .neq("workspace_id", workspaceId)
+      .maybeSingle();
+    if (existing) return { ok: false, error: "Cet identifiant est déjà utilisé. Choisissez-en un autre." };
+  }
+
+  const { error } = await supabase
+    .from("firm_profile")
+    .upsert({
+      workspace_id: workspaceId,
+      slug: values.slug || null,
+      portfolio_enabled: values.enabled,
+      portfolio_tagline: values.tagline,
+      portfolio_specialties: values.specialties,
+      updated_at: new Date().toISOString(),
+    });
+
+  if (error) return { ok: false, error: error.message };
   revalidatePath("/settings");
   return { ok: true, data: undefined };
 }

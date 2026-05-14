@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Save, Loader2 } from "lucide-react";
@@ -19,6 +20,7 @@ interface ProjectNotesEditorProps {
 }
 
 export function ProjectNotesEditor({ projectId, initialNotes }: ProjectNotesEditorProps) {
+  const t = useTranslations("common");
   const [notes, setNotes] = useState(initialNotes);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -56,7 +58,7 @@ export function ProjectNotesEditor({ projectId, initialNotes }: ProjectNotesEdit
           {saving
             ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             : <Save className="mr-2 h-4 w-4" />}
-          {dirty ? "Enregistrer" : "Enregistré"}
+          {dirty ? t("save") : t("saved")}
         </Button>
       </div>
 

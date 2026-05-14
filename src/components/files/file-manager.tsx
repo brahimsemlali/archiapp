@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -14,9 +15,12 @@ import {
   Loader2,
   FolderOpen,
   Trash2,
+  CheckCircle2,
+  Clock3,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { uploadFileAction, getFileDownloadUrl, deleteFileAction } from "@/lib/actions/files";
+import { uploadFileAction, getFileDownloadUrl, deleteFileAction, updateFileApprovalStatusAction } from "@/lib/actions/files";
 import { formatFileSize, formatDate } from "@/lib/format";
 import { FilePreview } from "./file-preview";
 import { ShareLinkDialog } from "./share-link-dialog";
@@ -32,6 +36,8 @@ interface FileRow {
   version: number;
   parent_file_id: string | null;
   note: string | null;
+  approval_status?: "not_required" | "pending" | "approved" | "rejected";
+  approval_note?: string | null;
   created_at: string;
 }
 
@@ -53,6 +59,7 @@ function isPreviewable(mimeType: string) {
 }
 
 export function FileManager({ projectId, filesByFolder, allFiles, defaultFolders }: FileManagerProps) {
+  const t = useTranslations("common");
   const [uploading, setUploading] = useState(false);
   const [activeFolder, setActiveFolder] = useState(defaultFolders[0] ?? "Plans");
   const [dragOver, setDragOver] = useState(false);
@@ -127,6 +134,18 @@ export function FileManager({ projectId, filesByFolder, allFiles, defaultFolders
     }
     setPreviewUrl(result.data);
     setPreviewFile(file);
+  };
+
+  const handleApprovalStatus = async (
+    file: FileRow,
+    status: "not_required" | "pending" | "approved" | "rejected"
+  ) => {
+    const result = await updateFileApprovalStatusAction(file.id, status);
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success(status === "pending" ? "Approbation demandée." : "Statut d'approbation mis à jour.");
   };
 
   const currentFiles = filesByFolder[activeFolder] ?? [];
@@ -239,10 +258,45 @@ export function FileManager({ projectId, filesByFolder, allFiles, defaultFolders
                             <Badge variant="secondary" className="text-xs h-4">v{file.version}</Badge>
                           </>
                         )}
+                        <ApprovalBadge status={file.approval_status ?? "not_required"} />
                       </div>
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
+                      {(file.approval_status ?? "not_required") === "not_required" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-2 text-xs"
+                          title="Demander une approbation client"
+                          onClick={() => handleApprovalStatus(file, "pending")}
+                        >
+                          <Clock3 className="h-4 w-4 mr-1" />
+                          Approbation
+                        </Button>
+                      )}
+                      {file.approval_status === "pending" && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-[#2F8F5C]"
+                            title="Marquer comme approuvé"
+                            onClick={() => handleApprovalStatus(file, "approved")}
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-[#C75B2E]"
+                            title="Marquer comme rejeté"
+                            onClick={() => handleApprovalStatus(file, "rejected")}
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
                       {fileHistory.length > 0 && (
                         <Button
                           variant="ghost"
@@ -276,7 +330,7 @@ export function FileManager({ projectId, filesByFolder, allFiles, defaultFolders
                         variant="ghost"
                         size="sm"
                         className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                        title="Supprimer"
+                        title={t("delete")}
                         onClick={() => handleDelete(file)}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -321,5 +375,20 @@ export function FileManager({ projectId, filesByFolder, allFiles, defaultFolders
         />
       )}
     </>
+  );
+}
+
+function ApprovalBadge({ status }: { status: "not_required" | "pending" | "approved" | "rejected" }) {
+  const config = {
+    not_required: { label: "Sans approbation", className: "bg-[#F2F2EE] text-[#82806F]" },
+    pending: { label: "À approuver", className: "bg-amber-50 text-amber-700" },
+    approved: { label: "Approuvé", className: "bg-[#E5F3EB] text-[#2F8F5C]" },
+    rejected: { label: "Corrections", className: "bg-[#FCEFE6] text-[#C75B2E]" },
+  }[status];
+
+  return (
+    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${config.className}`}>
+      {config.label}
+    </span>
   );
 }
