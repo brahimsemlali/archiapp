@@ -8,7 +8,8 @@ import crypto from "crypto";
 import { assertStorageAvailable } from "@/lib/billing/guards";
 import { buildSafeStorageFilename, validateDocumentUpload } from "@/lib/storage/upload-validation";
 import { sendEmail } from "@/lib/email/send";
-import { portalMessageEmail, APP_URL } from "@/lib/email/templates";
+import { portalMessageEmail, architectReplyEmail, APP_URL } from "@/lib/email/templates";
+import { notifyWorkspace } from "@/lib/push";
 
 const STORAGE_BUCKET = "project-files";
 const MAX_PORTAL_MESSAGE_LENGTH = 2_000;
@@ -106,9 +107,8 @@ export async function createProjectPortalLinkAction(
 
   if (error) return { ok: false, error: error.message };
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   revalidatePath(`/projects/${projectId}`);
-  return { ok: true, data: { token, url: `${appUrl}/portal/${token}` } };
+  return { ok: true, data: { token, url: `${APP_URL}/portal/${token}` } };
 }
 
 export async function revokeProjectPortalLinkAction(
@@ -186,6 +186,13 @@ export async function respondPortalDevisAction(
     metadata: { share_token: token, devisId, number: devis.number, title: devis.title, status },
   });
 
+  // Notify workspace: client responded to devis
+  await notifyWorkspace(supabase, shareLink.workspace_id, {
+    title: status === "accepte" ? "Devis accepté ✓" : "Devis refusé",
+    body: `${devis.number} — ${devis.title}`,
+    href: `/devis/${devisId}`,
+  });
+
   revalidatePath(`/portal/${token}`);
   return { ok: true, data: undefined };
 }
@@ -261,6 +268,13 @@ export async function createPortalMessageAction(
       resourceId: shareLink.resource_id,
     });
   }
+
+  // Push notification to workspace
+  await notifyWorkspace(supabase, shareLink.workspace_id, {
+    title: "Message client reçu",
+    body: senderName ? `${senderName} : ${body.slice(0, 80)}` : body.slice(0, 80),
+    href: `/projects/${shareLink.resource_id}`,
+  });
 
   revalidatePath(`/portal/${token}`);
   return { ok: true, data: undefined };
@@ -381,9 +395,8 @@ export async function createClientPortalLinkAction(
 
   if (error) return { ok: false, error: error.message };
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   revalidatePath(`/clients/${clientId}`);
-  return { ok: true, data: { token, url: `${appUrl}/portal/client/${token}` } };
+  return { ok: true, data: { token, url: `${APP_URL}/portal/client/${token}` } };
 }
 
 export async function revokeClientPortalLinkAction(
@@ -452,6 +465,13 @@ export async function respondClientPortalDevisAction(
     client_id: shareLink.resource_id,
     action: "devis.portal_response_attempt",
     metadata: { share_token: token, devisId, number: devis.number, title: devis.title, status },
+  });
+
+  // Push notification to workspace
+  await notifyWorkspace(supabase, shareLink.workspace_id, {
+    title: status === "accepte" ? "Devis accepté ✓" : "Devis refusé",
+    body: `${devis.number} — ${devis.title}`,
+    href: `/devis/${devisId}`,
   });
 
   revalidatePath(`/portal/client/${token}`);
@@ -529,6 +549,13 @@ export async function createClientPortalMessageAction(
     });
   }
 
+  // Push notification to workspace
+  await notifyWorkspace(supabase, shareLink.workspace_id, {
+    title: "Message client reçu",
+    body: senderName ? `${senderName} : ${body.slice(0, 80)}` : body.slice(0, 80),
+    href: `/clients/${shareLink.resource_id}`,
+  });
+
   revalidatePath(`/portal/client/${token}`);
   return { ok: true, data: undefined };
 }
@@ -571,6 +598,22 @@ export async function replyToClientPortalAction(
   });
 
   if (error) return { ok: false, error: error.message };
+
+  // Notify client by email if they have an email address
+  const [{ data: clientRow }, { data: firmRow }] = await Promise.all([
+    serviceSupabase.from("clients").select("name, email").eq("id", clientId).single(),
+    serviceSupabase.from("firm_profile").select("firm_name").eq("workspace_id", workspaceId).single(),
+  ]);
+  if (clientRow?.email) {
+    const { subject, html } = architectReplyEmail({
+      firmName: firmRow?.firm_name ?? "Votre architecte",
+      clientName: clientRow.name,
+      messageBody: trimmed,
+      portalUrl: `${APP_URL}/portal/client/${shareLink.token}#discussion`,
+    });
+    await sendEmail({ to: clientRow.email, subject, html, eventType: "architect_reply", workspaceId, resourceType: "client", resourceId: clientId });
+  }
+
   revalidatePath(`/clients/${clientId}`);
   return { ok: true, data: undefined };
 }

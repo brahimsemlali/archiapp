@@ -5,6 +5,7 @@ import { assertProjectMatchesClient, assertWorkspaceRecords, requireWorkspaceRol
 import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
 import { taskFormSchema, taskUpdateSchema, type TaskFormValues } from "@/lib/validators/tasks";
+import { notifyWorkspace } from "@/lib/push";
 
 
 export async function createTaskAction(values: TaskFormValues): Promise<Result<{ id: string }>> {
@@ -50,7 +51,17 @@ export async function createTaskAction(values: TaskFormValues): Promise<Result<{
     metadata: { title: parsed.data.title, priority: parsed.data.priority },
   });
 
+  // Notify the assigned user (if different from creator)
+  if (parsed.data.assignedTo) {
+    await notifyWorkspace(supabase, workspaceId, {
+      title: "Nouvelle tâche assignée",
+      body: parsed.data.title,
+      href: "/tasks",
+    }, { userId: parsed.data.assignedTo });
+  }
+
   revalidatePath("/tasks");
+  revalidatePath("/dashboard");
   return { ok: true, data };
 }
 
@@ -93,6 +104,7 @@ export async function updateTaskAction(id: string, values: Partial<TaskFormValue
   if (error) return { ok: false, error: error.message };
   if (!task) return { ok: false, error: "Tâche introuvable." };
   revalidatePath("/tasks");
+  revalidatePath("/dashboard");
   return { ok: true, data: undefined };
 }
 
@@ -120,6 +132,7 @@ export async function deleteTaskAction(id: string): Promise<Result<void>> {
   });
 
   revalidatePath("/tasks");
+  revalidatePath("/dashboard");
   return { ok: true, data: undefined };
 }
 
