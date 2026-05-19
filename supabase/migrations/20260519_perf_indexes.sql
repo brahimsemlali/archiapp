@@ -8,9 +8,9 @@ create index if not exists idx_devis_workspace_status on devis(workspace_id, sta
 -- M-6: Rate-limit lookups on activity_log
 create index if not exists idx_activity_log_rate_limit on activity_log(workspace_id, project_id, action, created_at desc);
 
--- Partial index: only unpaid/overdue invoices (most common dashboard filter)
+-- Partial index: unpaid invoices only (most common dashboard filter)
 create index if not exists idx_factures_unpaid on factures(workspace_id, due_date)
-  where status in ('envoyee', 'en_retard');
+  where status = 'envoyee';
 
 -- Partial index: active tasks only
 create index if not exists idx_tasks_active on tasks(workspace_id, due_date, status)
