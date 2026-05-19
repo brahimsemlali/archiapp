@@ -1,29 +1,30 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { assertWorkspaceRecord, requireWorkspaceRole } from "@/lib/workspace";
 import { projectSchema, type ProjectFormValues } from "@/lib/validators/project";
 import { inputToCentimes } from "@/lib/format";
+import { normalizeExternalUrl } from "@/lib/url";
 import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
+import type { InspirationItem } from "@/components/projects/inspiration-board";
+import { assertProjectAvailable, assertStorageAvailable } from "@/lib/billing/guards";
+import { validateImageUpload } from "@/lib/storage/upload-validation";
+import { dbError } from "@/lib/db-error";
 
-async function getWorkspaceId(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data } = await supabase
-    .from("workspaces")
-    .select("id")
-    .eq("owner_id", user.id)
-    .single();
-  return data?.id ?? null;
-}
 
 export async function createProjectAction(values: ProjectFormValues): Promise<Result<{ id: string }>> {
   const parsed = projectSchema.safeParse(values);
   if (!parsed.success) return { ok: false, error: "Données invalides." };
 
   const supabase = await createClient();
-  const workspaceId = await getWorkspaceId(supabase);
-  if (!workspaceId) return { ok: false, error: "Non authentifié." };
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
+  const projectLimit = await assertProjectAvailable(supabase, workspaceId);
+  if (!projectLimit.ok) return projectLimit;
+  const clientCheck = await assertWorkspaceRecord(supabase, "clients", parsed.data.clientId, workspaceId, "Client");
+  if (!clientCheck.ok) return clientCheck;
 
   const { data, error } = await supabase
     .from("projects")
@@ -47,7 +48,7 @@ export async function createProjectAction(values: ProjectFormValues): Promise<Re
     .select("id")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   await supabase.from("activity_log").insert({
     workspace_id: workspaceId,
@@ -66,10 +67,13 @@ export async function updateProjectAction(id: string, values: ProjectFormValues)
   if (!parsed.success) return { ok: false, error: "Données invalides." };
 
   const supabase = await createClient();
-  const workspaceId = await getWorkspaceId(supabase);
-  if (!workspaceId) return { ok: false, error: "Non authentifié." };
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
+  const clientCheck = await assertWorkspaceRecord(supabase, "clients", parsed.data.clientId, workspaceId, "Client");
+  if (!clientCheck.ok) return clientCheck;
 
-  const { error } = await supabase
+  const { data: project, error } = await supabase
     .from("projects")
     .update({
       client_id: parsed.data.clientId,
@@ -89,9 +93,12 @@ export async function updateProjectAction(id: string, values: ProjectFormValues)
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
-    .eq("workspace_id", workspaceId);
+    .eq("workspace_id", workspaceId)
+    .select("id")
+    .maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
+  if (!project) return { ok: false, error: "Projet introuvable." };
 
   revalidatePath(`/projects/${id}`);
   revalidatePath("/projects");
@@ -100,17 +107,173 @@ export async function updateProjectAction(id: string, values: ProjectFormValues)
 
 export async function archiveProjectAction(id: string): Promise<Result<void>> {
   const supabase = await createClient();
-  const workspaceId = await getWorkspaceId(supabase);
-  if (!workspaceId) return { ok: false, error: "Non authentifié." };
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
 
-  const { error } = await supabase
+  const { data: project, error } = await supabase
     .from("projects")
     .update({ archived_at: new Date().toISOString() })
     .eq("id", id)
-    .eq("workspace_id", workspaceId);
+    .eq("workspace_id", workspaceId)
+    .select("id")
+    .maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
+  if (!project) return { ok: false, error: "Projet introuvable." };
 
   revalidatePath("/projects");
+  return { ok: true, data: undefined };
+}
+
+// ─── Checklist ────────────────────────────────────────────────────────────────
+
+interface ChecklistItem { label: string; done: boolean; }
+
+export async function updateProjectChecklistAction(
+  id: string,
+  checklist: Record<string, ChecklistItem[]>
+): Promise<Result<void>> {
+  const supabase = await createClient();
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("metadata")
+    .eq("id", id)
+    .eq("workspace_id", workspaceId)
+    .single();
+
+  if (!project) return { ok: false, error: "Projet introuvable." };
+
+  const metadata = (project.metadata as Record<string, unknown>) ?? {};
+  const { data: updatedProject, error } = await supabase
+    .from("projects")
+    .update({ metadata: { ...metadata, checklist }, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("workspace_id", workspaceId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) return { ok: false, error: dbError(error) };
+  if (!updatedProject) return { ok: false, error: "Projet introuvable." };
+  revalidatePath(`/projects/${id}`);
+  return { ok: true, data: undefined };
+}
+
+// ─── Inspiration board ────────────────────────────────────────────────────────
+
+export async function addInspirationAction(
+  projectId: string,
+  formData: FormData
+): Promise<Result<InspirationItem>> {
+  const supabase = await createClient();
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
+  const projectCheck = await assertWorkspaceRecord(supabase, "projects", projectId, workspaceId, "Projet");
+  if (!projectCheck.ok) return projectCheck;
+
+  const file = formData.get("image") as File | null;
+  if (!file) return { ok: false, error: "Aucune image." };
+  const fileValidation = validateImageUpload(file, 10 * 1024 * 1024);
+  if (!fileValidation.ok) return fileValidation;
+  const storageCheck = await assertStorageAvailable(supabase, workspaceId, file.size);
+  if (!storageCheck.ok) return storageCheck;
+
+  const caption = (formData.get("caption") as string | null) ?? undefined;
+  const sourceInput = (formData.get("source") as string | null) ?? undefined;
+  const source = normalizeExternalUrl(sourceInput);
+  if (sourceInput?.trim() && !source) return { ok: false, error: "URL source invalide." };
+
+  const path = `${workspaceId}/${projectId}/inspirations/${Date.now()}.${fileValidation.data.extension}`;
+  const buffer = await file.arrayBuffer();
+
+  const { error: uploadError } = await supabase.storage
+    .from("project-files")
+    .upload(path, buffer, { contentType: fileValidation.data.contentType, upsert: false });
+
+  if (uploadError) return { ok: false, error: uploadError.message };
+
+  const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+    .from("project-files")
+    .createSignedUrl(path, 60 * 60);
+
+  if (signedUrlError || !signedUrlData?.signedUrl) {
+    return { ok: false, error: "Image envoyée, mais l'aperçu n'a pas pu être généré." };
+  }
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("metadata")
+    .eq("id", projectId)
+    .eq("workspace_id", workspaceId)
+    .single();
+
+  if (!project) return { ok: false, error: "Projet introuvable." };
+
+  const metadata = (project.metadata as Record<string, unknown>) ?? {};
+  const existing = (metadata.inspirations as InspirationItem[]) ?? [];
+  const newItem: InspirationItem = {
+    id: crypto.randomUUID(),
+    url: signedUrlData.signedUrl,
+    path,
+    caption: caption || undefined,
+    source: source || undefined,
+    uploadedAt: new Date().toISOString(),
+  };
+
+  const { data: updatedProject, error } = await supabase
+    .from("projects")
+    .update({ metadata: { ...metadata, inspirations: [...existing, newItem] }, updated_at: new Date().toISOString() })
+    .eq("id", projectId)
+    .eq("workspace_id", workspaceId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) return { ok: false, error: dbError(error) };
+  if (!updatedProject) return { ok: false, error: "Projet introuvable." };
+
+  revalidatePath(`/projects/${projectId}`);
+  return { ok: true, data: newItem };
+}
+
+export async function removeInspirationAction(
+  projectId: string,
+  itemId: string
+): Promise<Result<void>> {
+  const supabase = await createClient();
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("metadata")
+    .eq("id", projectId)
+    .eq("workspace_id", workspaceId)
+    .single();
+
+  if (!project) return { ok: false, error: "Projet introuvable." };
+
+  const metadata = (project.metadata as Record<string, unknown>) ?? {};
+  const existing = (metadata.inspirations as InspirationItem[]) ?? [];
+  const removedItem = existing.find((i) => i.id === itemId);
+
+  const { error } = await supabase
+    .from("projects")
+    .update({ metadata: { ...metadata, inspirations: existing.filter((i) => i.id !== itemId) }, updated_at: new Date().toISOString() })
+    .eq("id", projectId)
+    .eq("workspace_id", workspaceId);
+
+  if (error) return { ok: false, error: dbError(error) };
+
+  if (removedItem?.path) {
+    await supabase.storage.from("project-files").remove([removedItem.path]);
+  }
+
+  revalidatePath(`/projects/${projectId}`);
   return { ok: true, data: undefined };
 }

@@ -8,6 +8,7 @@ import { anthropic, AI_MODEL } from "@/lib/ai/anthropic";
 import { assertAiUsageAvailable, recordAiUsage } from "@/lib/ai/usage";
 import { createTimeEntryAction } from "@/lib/actions/time-entries";
 import type { Result } from "@/types";
+import { dbError } from "@/lib/db-error";
 
 const MEETING_TYPES = [
   "reunion_client",
@@ -111,7 +112,7 @@ export async function createMeetingAction(
     .select("id")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   await supabase.from("activity_log").insert({
     workspace_id: workspaceId,
@@ -302,7 +303,7 @@ Schéma JSON exact:
       .select("id")
       .single();
 
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: dbError(error) };
 
     await supabase.from("activity_log").insert({
       workspace_id: workspaceId,
@@ -366,7 +367,7 @@ export async function createTasksFromMeetingAction(meetingId: string): Promise<R
     }))
   ).select("id");
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   await supabase
     .from("meeting_notes")
@@ -448,7 +449,7 @@ export async function deleteMeetingAction(meetingId: string): Promise<Result<voi
     .delete()
     .eq("id", meetingId)
     .eq("workspace_id", workspaceId);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   revalidatePath(`/projects/${meeting.project_id}`);
   return { ok: true, data: undefined };
@@ -490,7 +491,7 @@ export async function signMeetingPvAction(input: {
     .eq("id", input.meetingId)
     .eq("workspace_id", shareLink.workspace_id);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   return { ok: true, data: undefined };
 }
 
@@ -533,7 +534,7 @@ export async function createVoiceNoteDraftAction(input: z.input<typeof voiceNote
     .select("id")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if (parsed.data.projectId) revalidatePath(`/projects/${parsed.data.projectId}`);
   return { ok: true, data: { id: data.id } };
 }

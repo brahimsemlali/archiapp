@@ -75,7 +75,8 @@ export default async function DashboardPage() {
       .select("id, number, title, total_centimes, due_date, status, clients!factures_client_id_fkey(name)")
       .eq("workspace_id", workspaceId)
       .eq("status", "envoyee")
-      .order("due_date", { ascending: true, nullsFirst: false }),
+      .order("due_date", { ascending: true, nullsFirst: false })
+      .limit(100),
     supabase
       .from("factures")
       .select("total_centimes")

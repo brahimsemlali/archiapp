@@ -5,6 +5,10 @@ import { assertDevisMatchesContext, assertProjectMatchesClient, assertWorkspaceR
 import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
 import { factureFormSchema, type FactureFormValues } from "@/lib/validators/facture";
+import { sendEmail } from "@/lib/email/send";
+import { factureSentEmail, APP_URL } from "@/lib/email/templates";
+import { formatMAD, formatDate } from "@/lib/format";
+import { dbError } from "@/lib/db-error";
 
 
 async function nextFactureNumber(supabase: Awaited<ReturnType<typeof createClient>>, workspaceId: string): Promise<string> {
@@ -34,19 +38,8 @@ async function createSentInvoiceSnapshot(
   status: "envoyee" | "payee",
   paidAt?: string
 ): Promise<Result<void>> {
-  const [{ data: userResult }, { data: existing }] = await Promise.all([
+  const [{ data: userResult }, { data: facture, error: factureError }, { data: firmProfile }] = await Promise.all([
     supabase.auth.getUser(),
-    supabase
-      .from("invoice_snapshots")
-      .select("id")
-      .eq("facture_id", factureId)
-      .eq("snapshot_type", "sent")
-      .maybeSingle(),
-  ]);
-
-  if (existing) return { ok: true, data: undefined };
-
-  const [{ data: facture, error: factureError }, { data: firmProfile }] = await Promise.all([
     supabase
       .from("factures")
       .select(`
@@ -82,18 +75,22 @@ async function createSentInvoiceSnapshot(
     firmProfile,
   };
 
+  // upsert with ignoreDuplicates avoids SELECT+INSERT race: unique(facture_id, snapshot_type)
   const { error } = await supabase
     .from("invoice_snapshots")
-    .insert({
-      workspace_id: workspaceId,
-      facture_id: factureId,
-      snapshot_type: "sent",
-      number: facture.number,
-      payload: snapshotPayload,
-      created_by: userResult.user?.id ?? null,
-    });
+    .upsert(
+      {
+        workspace_id: workspaceId,
+        facture_id: factureId,
+        snapshot_type: "sent",
+        number: facture.number,
+        payload: snapshotPayload,
+        created_by: userResult.user?.id ?? null,
+      },
+      { onConflict: "facture_id,snapshot_type", ignoreDuplicates: true }
+    );
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   return { ok: true, data: undefined };
 }
 
@@ -143,7 +140,7 @@ export async function createFactureAction(values: FactureFormValues): Promise<Re
     .select("id")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   await supabase.from("activity_log").insert({
     workspace_id: workspaceId,
@@ -211,7 +208,7 @@ export async function updateFactureAction(id: string, values: FactureFormValues)
     .select("id")
     .maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if (!facture) return { ok: false, error: "Facture introuvable." };
 
   revalidatePath("/factures");
@@ -255,11 +252,53 @@ export async function updateFactureStatusAction(
     })
     .eq("id", id)
     .eq("workspace_id", workspaceId)
-    .select("id")
+    .select("id, number, title, total_centimes, due_date, client_id, clients!factures_client_id_fkey(name, email)")
     .maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if (!facture) return { ok: false, error: "Facture introuvable." };
+
+  if (status === "envoyee") {
+    const { data: firm } = await supabase
+      .from("firm_profile")
+      .select("firm_name")
+      .eq("workspace_id", workspaceId)
+      .maybeSingle();
+
+    const { data: shareLink } = await supabase
+      .from("share_links")
+      .select("token")
+      .eq("workspace_id", workspaceId)
+      .eq("resource_type", "client")
+      .eq("resource_id", facture.client_id)
+      .is("expires_at", null)
+      .maybeSingle();
+
+    const client = Array.isArray(facture.clients) ? facture.clients[0] : facture.clients;
+    const portalUrl = shareLink
+      ? `${APP_URL}/portal/client/${shareLink.token}`
+      : `${APP_URL}/factures/${id}`;
+
+    const tpl = factureSentEmail({
+      firmName: firm?.firm_name ?? "Votre architecte",
+      clientName: client?.name ?? "Client",
+      factureNumber: facture.number ?? id,
+      factureTitle: facture.title ?? "Facture",
+      totalTTC: formatMAD(facture.total_centimes ?? 0),
+      dueDate: facture.due_date ? formatDate(facture.due_date) : "—",
+      portalUrl,
+    });
+
+    await sendEmail({
+      workspaceId,
+      to: client?.email,
+      subject: tpl.subject,
+      html: tpl.html,
+      eventType: "facture.sent",
+      resourceType: "facture",
+      resourceId: id,
+    });
+  }
 
   await supabase.from("invoice_status_events").insert({
     workspace_id: workspaceId,
@@ -273,6 +312,8 @@ export async function updateFactureStatusAction(
 
   revalidatePath("/factures");
   revalidatePath(`/factures/${id}`);
+  revalidatePath("/rapports");
+  revalidatePath("/dashboard");
   return { ok: true, data: undefined };
 }
 
@@ -302,7 +343,7 @@ export async function deleteFactureAction(id: string): Promise<Result<void>> {
     .select("id")
     .maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if (!facture) return { ok: false, error: "Facture introuvable." };
   revalidatePath("/factures");
   return { ok: true, data: undefined };

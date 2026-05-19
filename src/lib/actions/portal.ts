@@ -10,6 +10,7 @@ import { buildSafeStorageFilename, validateDocumentUpload } from "@/lib/storage/
 import { sendEmail } from "@/lib/email/send";
 import { portalMessageEmail, architectReplyEmail, APP_URL } from "@/lib/email/templates";
 import { notifyWorkspace } from "@/lib/push";
+import { dbError } from "@/lib/db-error";
 
 const STORAGE_BUCKET = "project-files";
 const MAX_PORTAL_MESSAGE_LENGTH = 2_000;
@@ -58,7 +59,7 @@ async function assertPortalRateLimit(
     .eq("action", action)
     .gte("created_at", since);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if ((count ?? 0) >= maxActions) {
     return { ok: false, error: "Trop de tentatives. Réessayez dans quelques minutes." };
   }
@@ -105,7 +106,7 @@ export async function createProjectPortalLinkAction(
     expires_at: expiresAt,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   revalidatePath(`/projects/${projectId}`);
   return { ok: true, data: { token, url: `${APP_URL}/portal/${token}` } };
@@ -177,7 +178,7 @@ export async function respondPortalDevisAction(
     .eq("id", devisId)
     .eq("workspace_id", shareLink.workspace_id);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   await supabase.from("activity_log").insert({
     workspace_id: shareLink.workspace_id,
@@ -226,7 +227,7 @@ export async function createPortalMessageAction(
     body,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   await supabase.from("activity_log").insert({
     workspace_id: shareLink.workspace_id,
@@ -323,7 +324,7 @@ export async function uploadPortalDocumentAction(
     metadata: { source: "client_portal", share_token: token },
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   await supabase.from("activity_log").insert({
     workspace_id: shareLink.workspace_id,
@@ -393,7 +394,7 @@ export async function createClientPortalLinkAction(
     expires_at: null,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   revalidatePath(`/clients/${clientId}`);
   return { ok: true, data: { token, url: `${APP_URL}/portal/client/${token}` } };
@@ -427,6 +428,8 @@ export async function respondClientPortalDevisAction(
 ): Promise<Result<void>> {
   const { supabase, shareLink, error: linkError } = await getValidClientShareLink(token);
   if (!shareLink) return { ok: false, error: linkError ?? "Lien invalide." };
+  const rateLimit = await assertPortalRateLimit(supabase, shareLink, "devis.portal_response_attempt", 8, 60 * 60);
+  if (!rateLimit.ok) return rateLimit;
 
   const { data: devis } = await supabase
     .from("devis")
@@ -457,7 +460,7 @@ export async function respondClientPortalDevisAction(
     .eq("id", devisId)
     .eq("workspace_id", shareLink.workspace_id);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   await supabase.from("activity_log").insert({
     workspace_id: shareLink.workspace_id,
@@ -484,6 +487,8 @@ export async function createClientPortalMessageAction(
 ): Promise<Result<void>> {
   const { supabase, shareLink, error: linkError } = await getValidClientShareLink(token);
   if (!shareLink) return { ok: false, error: linkError ?? "Lien invalide." };
+  const rateLimit = await assertPortalRateLimit(supabase, shareLink, "portal.message_created", 20, 10 * 60);
+  if (!rateLimit.ok) return rateLimit;
 
   const body = input.body.trim();
   if (!body) return { ok: false, error: "Message vide." };
@@ -506,7 +511,7 @@ export async function createClientPortalMessageAction(
     body,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   await supabase.from("activity_log").insert({
     workspace_id: shareLink.workspace_id,
@@ -597,7 +602,7 @@ export async function replyToClientPortalAction(
     body: trimmed,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   // Notify client by email if they have an email address
   const [{ data: clientRow }, { data: firmRow }] = await Promise.all([
@@ -666,7 +671,7 @@ export async function respondPortalFileApprovalAction(
     .eq("id", fileId)
     .eq("workspace_id", shareLink.workspace_id);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   await supabase.from("activity_log").insert({
     workspace_id: shareLink.workspace_id,
@@ -687,6 +692,8 @@ export async function respondClientPortalFileApprovalAction(
 ): Promise<Result<void>> {
   const { supabase, shareLink, error: linkError } = await getValidClientShareLink(token);
   if (!shareLink) return { ok: false, error: linkError ?? "Lien invalide." };
+  const rateLimit = await assertPortalRateLimit(supabase, shareLink, "file.portal_approval_attempt", 20, 60 * 60);
+  if (!rateLimit.ok) return rateLimit;
 
   const approvalNote = note?.trim() || null;
   if (approvalNote && approvalNote.length > MAX_PORTAL_NOTE_LENGTH) {
@@ -729,7 +736,7 @@ export async function respondClientPortalFileApprovalAction(
     .eq("id", fileId)
     .eq("workspace_id", shareLink.workspace_id);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   await supabase.from("activity_log").insert({
     workspace_id: shareLink.workspace_id,

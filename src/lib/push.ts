@@ -42,6 +42,8 @@ export async function sendPushNotification(
   }
 }
 
+const PUSH_CONCURRENCY = 10;
+
 // Broadcast a push to all subscribers in a workspace, optionally scoped to one user.
 export async function notifyWorkspace(
   supabase: SupabaseClient,
@@ -64,21 +66,25 @@ export async function notifyWorkspace(
   if (!subs?.length) return;
 
   const stale: string[] = [];
-  await Promise.all(
-    subs.map(async (sub) => {
-      try {
-        await webpush.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          JSON.stringify(payload)
-        );
-      } catch (err: unknown) {
-        // 410 Gone = subscription expired, remove it
-        if (err && typeof err === "object" && "statusCode" in err && (err as { statusCode: number }).statusCode === 410) {
-          stale.push(sub.endpoint);
+
+  for (let i = 0; i < subs.length; i += PUSH_CONCURRENCY) {
+    const batch = subs.slice(i, i + PUSH_CONCURRENCY);
+    await Promise.all(
+      batch.map(async (sub) => {
+        try {
+          await webpush.sendNotification(
+            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+            JSON.stringify(payload)
+          );
+        } catch (err: unknown) {
+          // 410 Gone = subscription expired, remove it
+          if (err && typeof err === "object" && "statusCode" in err && (err as { statusCode: number }).statusCode === 410) {
+            stale.push(sub.endpoint);
+          }
         }
-      }
-    })
-  );
+      })
+    );
+  }
 
   if (stale.length > 0) {
     await supabase.from("push_subscriptions").delete().in("endpoint", stale);

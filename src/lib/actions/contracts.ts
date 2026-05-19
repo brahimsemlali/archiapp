@@ -1,56 +1,30 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { assertProjectMatchesClient, assertWorkspaceRecords, requireWorkspaceRole } from "@/lib/workspace";
 import { contractGenerateSchema, contractAiResponseSchema, type ContractAiResponse } from "@/lib/validators/contract";
-import { nvidiaClient, NVIDIA_MODEL, NVIDIA_PROMPT_VERSION } from "@/lib/ai/nvidia";
+import { anthropic, AI_MODEL } from "@/lib/ai/anthropic";
 import { CONTRACT_SYSTEM_PROMPT } from "@/lib/ai/prompts/contract";
+import { assertAiUsageAvailable, recordAiUsage } from "@/lib/ai/usage";
 import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
+import { dbError } from "@/lib/db-error";
 
-async function getWorkspaceId(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data } = await supabase
-    .from("workspaces")
-    .select("id")
-    .eq("owner_id", user.id)
-    .single();
-  return data?.id ?? null;
-}
+const CONTRACT_PROMPT_VERSION = "v1.1";
 
 async function collectStream(userPrompt: string): Promise<string> {
-  const stream = await nvidiaClient.chat.completions.create(
-    {
-      model: NVIDIA_MODEL,
-      messages: [
-        { role: "system", content: CONTRACT_SYSTEM_PROMPT },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.7,
-      top_p: 1,
-      max_tokens: 8192,
-      stream: true,
-    },
-    {
-      body: {
-        extra_body: {
-          chat_template_kwargs: {
-            enable_thinking: true,
-            clear_thinking: true,
-          },
-        },
-      },
-    }
-  );
+  const message = await anthropic.messages.create({
+    model: AI_MODEL,
+    max_tokens: 8192,
+    temperature: 0.4,
+    system: `${CONTRACT_SYSTEM_PROMPT}\n\nRenvoie uniquement du JSON strict sans markdown.`,
+    messages: [{ role: "user", content: userPrompt }],
+  });
 
-  let content = "";
-  for await (const chunk of stream) {
-    const delta = chunk.choices[0]?.delta;
-    if (delta && "content" in delta && delta.content) {
-      content += delta.content;
-    }
-  }
-  return content;
+  return message.content
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("\n");
 }
 
 async function callAI(userPrompt: string): Promise<Result<ContractAiResponse>> {
@@ -58,7 +32,7 @@ async function callAI(userPrompt: string): Promise<Result<ContractAiResponse>> {
   try {
     rawText = await collectStream(userPrompt);
   } catch (err) {
-    return { ok: false, error: `Erreur API NVIDIA : ${err instanceof Error ? err.message : String(err)}` };
+    return { ok: false, error: `Erreur API IA : ${err instanceof Error ? err.message : String(err)}` };
   }
 
   // Extract JSON — AI may wrap it in markdown code fences
@@ -117,13 +91,23 @@ export async function generateContractAction(
   }
 
   const supabase = await createClient();
-  const workspaceId = await getWorkspaceId(supabase);
-  if (!workspaceId) return { ok: false, error: "Non authentifié." };
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
+  const relationCheck = await assertWorkspaceRecords(supabase, workspaceId, [
+    { table: "clients", id: parsed.data.clientId, label: "Client" },
+    { table: "projects", id: parsed.data.projectId, label: "Projet" },
+  ]);
+  if (!relationCheck.ok) return relationCheck;
+  const projectClientCheck = await assertProjectMatchesClient(supabase, workspaceId, parsed.data.projectId, parsed.data.clientId);
+  if (!projectClientCheck.ok) return projectClientCheck;
+  const quota = await assertAiUsageAvailable(supabase, workspaceId);
+  if (!quota.ok) return quota;
 
   const [clientRes, projectRes, firmRes] = await Promise.all([
-    supabase.from("clients").select("name, type, address, ice, cin").eq("id", parsed.data.clientId).single(),
+    supabase.from("clients").select("name, type, address, ice, cin").eq("id", parsed.data.clientId).eq("workspace_id", workspaceId).single(),
     parsed.data.projectId
-      ? supabase.from("projects").select("title, type, address, surface_m2").eq("id", parsed.data.projectId).single()
+      ? supabase.from("projects").select("title, type, address, surface_m2").eq("id", parsed.data.projectId).eq("workspace_id", workspaceId).single()
       : Promise.resolve({ data: null }),
     supabase.from("firm_profile").select("firm_name, architect_name, address, ice, rc").eq("workspace_id", workspaceId).single(),
   ]);
@@ -142,6 +126,16 @@ export async function generateContractAction(
 
   const aiResult = await callAI(userPrompt);
   if (!aiResult.ok) return aiResult;
+  await recordAiUsage(supabase, workspaceId, {
+    feature: "contract_generation",
+    provider: "anthropic",
+    model: AI_MODEL,
+    metadata: {
+      promptVersion: CONTRACT_PROMPT_VERSION,
+      clientId: parsed.data.clientId,
+      projectId: parsed.data.projectId ?? null,
+    },
+  });
 
   const contractData = aiResult.data;
   const contentHtml = contractData.sections
@@ -160,21 +154,21 @@ export async function generateContractAction(
       content_html: contentHtml,
       ai_prompt: userPrompt,
       ai_response_raw: JSON.stringify(contractData),
-      ai_model: `${NVIDIA_MODEL}@${NVIDIA_PROMPT_VERSION}`,
+      ai_model: `${AI_MODEL}@${CONTRACT_PROMPT_VERSION}`,
       status: "brouillon",
       version: 1,
     })
     .select("id")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   await supabase.from("activity_log").insert({
     workspace_id: workspaceId,
     project_id: parsed.data.projectId ?? null,
     client_id: parsed.data.clientId,
     action: "contract.generated",
-    metadata: { title: contractData.title, ai_model: NVIDIA_MODEL },
+    metadata: { title: contractData.title, ai_model: AI_MODEL },
   });
 
   if (parsed.data.projectId) {
@@ -197,8 +191,9 @@ export async function updateContractContentAction(
   contentHtml: string
 ): Promise<Result<void>> {
   const supabase = await createClient();
-  const workspaceId = await getWorkspaceId(supabase);
-  if (!workspaceId) return { ok: false, error: "Non authentifié." };
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
 
   const { error } = await supabase
     .from("contracts")
@@ -210,7 +205,7 @@ export async function updateContractContentAction(
     .eq("id", contractId)
     .eq("workspace_id", workspaceId);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   revalidatePath(`/contracts/${contractId}`);
   return { ok: true, data: undefined };
@@ -218,8 +213,9 @@ export async function updateContractContentAction(
 
 export async function archiveContractAction(contractId: string): Promise<Result<void>> {
   const supabase = await createClient();
-  const workspaceId = await getWorkspaceId(supabase);
-  if (!workspaceId) return { ok: false, error: "Non authentifié." };
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
 
   const { error } = await supabase
     .from("contracts")
@@ -227,7 +223,7 @@ export async function archiveContractAction(contractId: string): Promise<Result<
     .eq("id", contractId)
     .eq("workspace_id", workspaceId);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   revalidatePath(`/contracts/${contractId}`);
   revalidatePath("/contracts");
@@ -236,8 +232,9 @@ export async function archiveContractAction(contractId: string): Promise<Result<
 
 export async function finalizeContractAction(contractId: string): Promise<Result<void>> {
   const supabase = await createClient();
-  const workspaceId = await getWorkspaceId(supabase);
-  if (!workspaceId) return { ok: false, error: "Non authentifié." };
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
 
   const { error } = await supabase
     .from("contracts")
@@ -245,7 +242,7 @@ export async function finalizeContractAction(contractId: string): Promise<Result
     .eq("id", contractId)
     .eq("workspace_id", workspaceId);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   revalidatePath(`/contracts/${contractId}`);
   return { ok: true, data: undefined };

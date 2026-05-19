@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireWorkspaceRole } from "@/lib/workspace";
 import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
+import { dbError } from "@/lib/db-error";
 
 export interface TimeEntryInput {
   projectId?: string;
@@ -49,7 +50,7 @@ export async function createTimeEntryAction(input: TimeEntryInput): Promise<Resu
     .select("id")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   revalidatePath("/time");
   return { ok: true, data };
 }
@@ -86,7 +87,7 @@ export async function updateTimeEntryAction(id: string, input: Partial<TimeEntry
     .eq("id", id)
     .eq("workspace_id", workspaceId);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   revalidatePath("/time");
   return { ok: true, data: undefined };
 }
@@ -98,7 +99,7 @@ export async function deleteTimeEntryAction(id: string): Promise<Result<void>> {
   const { workspaceId } = context.data;
 
   const { error } = await supabase.from("time_entries").delete().eq("id", id).eq("workspace_id", workspaceId);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   revalidatePath("/time");
   return { ok: true, data: undefined };
 }

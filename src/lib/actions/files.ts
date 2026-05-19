@@ -1,36 +1,17 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { assertWorkspaceRecord, getWorkspaceId, requireWorkspaceRole } from "@/lib/workspace";
+import { assertWorkspaceRecord, requireActiveWorkspace, requireWorkspaceRole } from "@/lib/workspace";
 import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
 import crypto from "crypto";
 import { assertStorageAvailable } from "@/lib/billing/guards";
+import { buildSafeStorageFilename, sanitizeStorageSegment, validateDocumentUpload } from "@/lib/storage/upload-validation";
+import { dbError } from "@/lib/db-error";
 
 const STORAGE_BUCKET = "project-files";
 const APPROVAL_STATUSES = ["not_required", "pending", "approved", "rejected"] as const;
 type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
-
-const ALLOWED_MIME_PREFIXES = ["image/", "text/", "video/"];
-const ALLOWED_MIME_EXACT = new Set([
-  "application/pdf",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.ms-powerpoint",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "application/zip",
-  "application/x-zip-compressed",
-  "application/x-rar-compressed",
-  "application/octet-stream", // CAD/BIM files (.dwg, .dxf, .ifc, .rvt, .skp) always report as octet-stream
-]);
-
-function isMimeAllowed(mime: string): boolean {
-  const normalized = mime.toLowerCase().split(";")[0]!.trim();
-  return ALLOWED_MIME_PREFIXES.some((p) => normalized.startsWith(p)) || ALLOWED_MIME_EXACT.has(normalized);
-}
-
 
 export async function uploadFileAction(
   projectId: string,
@@ -47,12 +28,8 @@ export async function uploadFileAction(
   const file = formData.get("file") as File | null;
   if (!file) return { ok: false, error: "Aucun fichier fourni." };
 
-  if (!isMimeAllowed(file.type)) {
-    return { ok: false, error: "Type de fichier non autorisé." };
-  }
-  if (file.size > 100 * 1024 * 1024) {
-    return { ok: false, error: "Le fichier dépasse 100 Mo." };
-  }
+  const fileValidation = validateDocumentUpload(file, 100 * 1024 * 1024);
+  if (!fileValidation.ok) return fileValidation;
   const storageCheck = await assertStorageAvailable(supabase, workspaceId, file.size);
   if (!storageCheck.ok) return storageCheck;
 
@@ -71,13 +48,15 @@ export async function uploadFileAction(
   const latestExisting = existing?.[0];
   const newVersion = latestExisting ? latestExisting.version + 1 : 1;
 
-  const storagePath = `${workspaceId}/${projectId}/${folder}/${Date.now()}_${file.name}`;
+  const safeFolder = sanitizeStorageSegment(folder, "Documents");
+  const safeName = buildSafeStorageFilename(file.name, fileValidation.data.extension);
+  const storagePath = `${workspaceId}/${projectId}/${safeFolder}/${Date.now()}_${safeName}`;
 
   const arrayBuffer = await file.arrayBuffer();
   const { error: uploadError } = await supabase.storage
     .from(STORAGE_BUCKET)
     .upload(storagePath, arrayBuffer, {
-      contentType: file.type || "application/octet-stream",
+      contentType: fileValidation.data.contentType,
       upsert: false,
     });
 
@@ -92,7 +71,7 @@ export async function uploadFileAction(
       filename: file.name,
       storage_path: storagePath,
       size_bytes: file.size,
-      mime_type: file.type || "application/octet-stream",
+      mime_type: fileValidation.data.contentType,
       version: newVersion,
       parent_file_id: latestExisting?.id ?? null,
     })
@@ -121,8 +100,9 @@ export async function uploadFileAction(
 
 export async function getFileDownloadUrl(fileId: string): Promise<Result<string>> {
   const supabase = await createClient();
-  const workspaceId = await getWorkspaceId(supabase);
-  if (!workspaceId) return { ok: false, error: "Non authentifié." };
+  const workspace = await requireActiveWorkspace(supabase);
+  if (!workspace.ok) return { ok: false, error: workspace.error };
+  const { workspaceId } = workspace.data;
 
   const { data: file } = await supabase
     .from("files")
@@ -173,7 +153,7 @@ export async function createShareLinkAction(
     expires_at: expiresAt,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   return { ok: true, data: `${appUrl}/share/${token}` };
@@ -202,7 +182,7 @@ export async function deleteFileAction(fileId: string): Promise<Result<void>> {
     .eq("id", fileId)
     .eq("workspace_id", workspaceId);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   revalidatePath(`/projects/${file.project_id}/files`);
   return { ok: true, data: undefined };
@@ -243,7 +223,7 @@ export async function updateFileApprovalStatusAction(
     .eq("id", fileId)
     .eq("workspace_id", workspaceId);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   await supabase.from("activity_log").insert({
     workspace_id: workspaceId,

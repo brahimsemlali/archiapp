@@ -5,6 +5,7 @@ import { WORKSPACE_ADMIN_ROLES, requireWorkspaceRole } from "@/lib/workspace";
 import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
 import { sendWelcomeEmailAction } from "@/lib/actions/auth";
+import { dbError } from "@/lib/db-error";
 
 export interface FirmProfileValues {
   firmName?: string;
@@ -64,7 +65,7 @@ export async function updateFirmProfileAction(values: FirmProfileValues): Promis
       updated_at: new Date().toISOString(),
     });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   if (isOnboarding) {
     // Send welcome email on first onboarding completion
@@ -129,7 +130,7 @@ export async function updatePortfolioSettingsAction(values: PortfolioValues): Pr
       updated_at: new Date().toISOString(),
     });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   revalidatePath("/settings");
   return { ok: true, data: undefined };
 }

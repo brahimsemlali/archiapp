@@ -1,8 +1,12 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { requireWorkspaceRole } from "@/lib/workspace";
 import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
+import { assertStorageAvailable } from "@/lib/billing/guards";
+import { buildSafeStorageFilename, validateImageUpload } from "@/lib/storage/upload-validation";
+import { dbError } from "@/lib/db-error";
 
 export interface Observation {
   id: string;
@@ -10,6 +14,9 @@ export interface Observation {
   note: string;
   photoUrl?: string;
   photoPath?: string;
+  createIssue?: boolean;
+  issuePriority?: "low" | "medium" | "high";
+  issueTitle?: string;
 }
 
 export interface CreateVisiteInput {
@@ -23,17 +30,25 @@ export interface CreateVisiteInput {
   aiGenerated?: boolean;
 }
 
-async function getWorkspaceId(supabase: Awaited<ReturnType<typeof createClient>>): Promise<string | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data } = await supabase.from("workspaces").select("id").eq("owner_id", user.id).single();
-  return data?.id ?? null;
-}
 
 export async function createVisiteAction(input: CreateVisiteInput): Promise<Result<{ id: string }>> {
   const supabase = await createClient();
-  const workspaceId = await getWorkspaceId(supabase);
-  if (!workspaceId) return { ok: false, error: "Non authentifié." };
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { user, workspaceId } = context.data;
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", input.projectId)
+    .eq("workspace_id", workspaceId)
+    .single();
+  if (!project) return { ok: false, error: "Projet introuvable." };
+
+  const observations = input.observations.map((obs) => ({
+    ...obs,
+    photoUrl: undefined,
+  }));
 
   const { data, error } = await supabase
     .from("site_visits")
@@ -44,20 +59,41 @@ export async function createVisiteAction(input: CreateVisiteInput): Promise<Resu
       visit_date: input.visitDate,
       weather: input.weather ?? null,
       attendees: input.attendees ?? null,
-      observations: input.observations,
+      observations,
       summary: input.summary ?? null,
       ai_generated: input.aiGenerated ?? false,
     })
     .select("id")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
+
+  const issueObservations = observations.filter((obs) => obs.createIssue && obs.note.trim());
+  if (issueObservations.length > 0) {
+    const { error: issueError } = await supabase.from("site_issues").insert(
+      issueObservations.map((obs) => ({
+        workspace_id: workspaceId,
+        project_id: input.projectId,
+        site_visit_id: data.id,
+        created_by: user.id,
+        title: obs.issueTitle?.trim() || `${obs.zone} — ${obs.note.trim().slice(0, 80)}`,
+        description: obs.note.trim(),
+        zone: obs.zone,
+        status: "open",
+        priority: obs.issuePriority ?? "medium",
+        photo_url: null,
+        photo_path: obs.photoPath ?? null,
+        metadata: { source: "site_visit_observation", observation_id: obs.id },
+      }))
+    );
+    if (issueError) return { ok: false, error: issueError.message };
+  }
 
   await supabase.from("activity_log").insert({
     workspace_id: workspaceId,
     project_id: input.projectId,
     action: "visite.created",
-    metadata: { title: input.title, visit_date: input.visitDate },
+    metadata: { title: input.title, visit_date: input.visitDate, issues_created: issueObservations.length },
   });
 
   revalidatePath(`/projects/${input.projectId}`);
@@ -69,33 +105,58 @@ export async function uploadVisitePhotoAction(
   formData: FormData
 ): Promise<Result<{ url: string; path: string }>> {
   const supabase = await createClient();
-  const workspaceId = await getWorkspaceId(supabase);
-  if (!workspaceId) return { ok: false, error: "Non authentifié." };
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", projectId)
+    .eq("workspace_id", workspaceId)
+    .single();
+  if (!project) return { ok: false, error: "Projet introuvable." };
 
   const file = formData.get("photo") as File | null;
   if (!file) return { ok: false, error: "Aucune photo." };
 
-  if (file.size > 10 * 1024 * 1024) return { ok: false, error: "Photo trop lourde (max 10 Mo)." };
+  const fileValidation = validateImageUpload(file, 10 * 1024 * 1024);
+  if (!fileValidation.ok) return fileValidation;
+  const storageCheck = await assertStorageAvailable(supabase, workspaceId, file.size);
+  if (!storageCheck.ok) return storageCheck;
 
-  const path = `${workspaceId}/${projectId}/visites/${Date.now()}_${file.name}`;
+  const safeName = buildSafeStorageFilename(file.name, fileValidation.data.extension);
+  const path = `${workspaceId}/${projectId}/visites/${Date.now()}_${safeName}`;
   const arrayBuffer = await file.arrayBuffer();
 
   const { error } = await supabase.storage
     .from("project-files")
-    .upload(path, arrayBuffer, { contentType: file.type, upsert: false });
+    .upload(path, arrayBuffer, { contentType: fileValidation.data.contentType, upsert: false });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
-  const { data } = supabase.storage.from("project-files").getPublicUrl(path);
-  return { ok: true, data: { url: data.publicUrl, path } };
+  const { data } = await supabase.storage.from("project-files").createSignedUrl(path, 60 * 60);
+  if (!data?.signedUrl) return { ok: false, error: "Photo envoyée, mais l'aperçu n'a pas pu être généré." };
+
+  return { ok: true, data: { url: data.signedUrl, path } };
 }
 
 export async function deleteVisiteAction(id: string, projectId: string): Promise<Result<void>> {
   const supabase = await createClient();
-  const workspaceId = await getWorkspaceId(supabase);
-  if (!workspaceId) return { ok: false, error: "Non authentifié." };
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
 
-  await supabase.from("site_visits").delete().eq("id", id).eq("workspace_id", workspaceId);
+  const { data: visite } = await supabase
+    .from("site_visits")
+    .select("project_id")
+    .eq("id", id)
+    .eq("workspace_id", workspaceId)
+    .single();
+  if (!visite || visite.project_id !== projectId) return { ok: false, error: "Visite introuvable." };
+
+  const { error } = await supabase.from("site_visits").delete().eq("id", id).eq("workspace_id", workspaceId);
+  if (error) return { ok: false, error: dbError(error) };
   revalidatePath(`/projects/${projectId}`);
   return { ok: true, data: undefined };
 }

@@ -9,6 +9,7 @@ import { getPlanLimits } from "@/lib/billing/plans";
 import { requireActiveWorkspace, requireWorkspaceAccountActive, setActiveWorkspaceCookie } from "@/lib/workspace";
 import { sendEmail } from "@/lib/email/send";
 import { inviteEmail } from "@/lib/email/templates";
+import { dbError } from "@/lib/db-error";
 
 export type WorkspaceMemberRole = "owner" | "admin" | "member" | "viewer";
 
@@ -55,7 +56,7 @@ async function getCurrentMemberRole(
     .eq("user_id", userId)
     .maybeSingle<WorkspaceMemberRoleRow>();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if (!data) return { ok: false, error: "Vous n'avez pas accès à cet espace de travail." };
 
   return { ok: true, data: data.role };
@@ -77,7 +78,7 @@ export async function switchWorkspaceAction(workspaceId: string): Promise<Result
     .eq("user_id", user.id)
     .maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if (!membership) return { ok: false, error: "Vous n'avez pas accès à cet espace de travail." };
   const workspaceStatus = await requireWorkspaceAccountActive(supabase, workspaceId);
   if (!workspaceStatus.ok) return { ok: false, error: workspaceStatus.error };
@@ -167,7 +168,7 @@ export async function inviteMemberAction(
     .select("id, email, role, token, status, expires_at, created_at")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if (!invite) return { ok: false, error: "Invitation non créée." };
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
@@ -228,7 +229,7 @@ export async function revokeInviteAction(inviteId: string): Promise<Result<void>
     .select("id")
     .maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if (!data) return { ok: false, error: "Invitation introuvable ou déjà révoquée." };
   revalidatePath("/settings");
   return { ok: true, data: undefined };
@@ -253,7 +254,7 @@ export async function updateMemberRoleAction(memberId: string, role: WorkspaceMe
     .select("id")
     .maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if (!data) return { ok: false, error: "Membre introuvable ou protégé." };
   revalidatePath("/settings");
   return { ok: true, data: undefined };
@@ -276,7 +277,7 @@ export async function removeMemberAction(memberId: string): Promise<Result<void>
     .select("id")
     .maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if (!data) return { ok: false, error: "Membre introuvable ou protégé." };
   revalidatePath("/settings");
   return { ok: true, data: undefined };

@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
 import { taskFormSchema, taskUpdateSchema, type TaskFormValues } from "@/lib/validators/tasks";
 import { notifyWorkspace } from "@/lib/push";
+import { dbError } from "@/lib/db-error";
 
 
 export async function createTaskAction(values: TaskFormValues): Promise<Result<{ id: string }>> {
@@ -41,7 +42,7 @@ export async function createTaskAction(values: TaskFormValues): Promise<Result<{
     .select("id")
     .single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   await supabase.from("activity_log").insert({
     workspace_id: workspaceId,
@@ -101,7 +102,7 @@ export async function updateTaskAction(id: string, values: Partial<TaskFormValue
     .select("id")
     .maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if (!task) return { ok: false, error: "Tâche introuvable." };
   revalidatePath("/tasks");
   revalidatePath("/dashboard");
@@ -122,7 +123,7 @@ export async function deleteTaskAction(id: string): Promise<Result<void>> {
     .select("id")
     .maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if (!task) return { ok: false, error: "Tâche introuvable." };
 
   await supabase.from("activity_log").insert({
@@ -158,7 +159,7 @@ export async function updateTaskMetadataAction(
     .select("id")
     .maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if (!task) return { ok: false, error: "Tâche introuvable." };
   return { ok: true, data: undefined };
 }

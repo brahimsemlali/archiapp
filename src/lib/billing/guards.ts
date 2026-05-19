@@ -99,12 +99,13 @@ export async function assertStorageAvailable(
 
   const { data, error } = await supabase
     .from("files")
-    .select("size_bytes")
-    .eq("workspace_id", workspaceId);
+    .select("size_bytes.sum()")
+    .eq("workspace_id", workspaceId)
+    .single();
 
   if (error) return { ok: false, error: error.message };
 
-  const currentBytes = (data ?? []).reduce((sum, file) => sum + Number(file.size_bytes ?? 0), 0);
+  const currentBytes = Number((data as unknown as { sum: string | null })?.sum ?? 0);
   const limitBytes = limits.storageGb * 1024 * 1024 * 1024;
 
   if (currentBytes + additionalBytes > limitBytes) {

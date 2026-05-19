@@ -5,6 +5,7 @@ import { assertWorkspaceRecord, requireWorkspaceRole } from "@/lib/workspace";
 import { normalizeExternalUrl } from "@/lib/url";
 import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
+import { dbError } from "@/lib/db-error";
 
 export interface SupplierValues {
   name: string;
@@ -49,7 +50,7 @@ export async function createSupplierAction(values: SupplierValues): Promise<Resu
     rating: values.rating ?? null,
   }).select("id").single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
 
   await supabase.from("activity_log").insert({
     workspace_id: workspaceId,
@@ -80,7 +81,7 @@ export async function updateSupplierAction(id: string, values: Partial<SupplierV
     ...(values.rating !== undefined && { rating: values.rating ?? null }),
   }).eq("id", id).eq("workspace_id", workspaceId).select("id").maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if (!supplier) return { ok: false, error: "Fournisseur introuvable." };
   revalidatePath("/fournisseurs");
   return { ok: true, data: undefined };
@@ -92,7 +93,7 @@ export async function deleteSupplierAction(id: string): Promise<Result<void>> {
   if (!context.ok) return { ok: false, error: context.error };
   const { workspaceId } = context.data;
   const { data: supplier, error } = await supabase.from("suppliers").update({ archived_at: new Date().toISOString() }).eq("id", id).eq("workspace_id", workspaceId).select("id, name").maybeSingle();
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if (!supplier) return { ok: false, error: "Fournisseur introuvable." };
 
   await supabase.from("activity_log").insert({
@@ -126,7 +127,7 @@ export async function createCatalogItemAction(values: CatalogItemValues): Promis
     last_updated: values.lastUpdated || new Date().toISOString().split("T")[0],
   }).select("id").single();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   revalidatePath("/fournisseurs");
   return { ok: true, data: { id: data.id } };
 }
@@ -150,7 +151,7 @@ export async function updateCatalogItemAction(id: string, values: Partial<Catalo
     last_updated: new Date().toISOString().split("T")[0],
   }).eq("id", id).eq("workspace_id", workspaceId).select("id").maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if (!item) return { ok: false, error: "Article introuvable." };
   revalidatePath("/fournisseurs");
   return { ok: true, data: undefined };
@@ -162,7 +163,7 @@ export async function deleteCatalogItemAction(id: string): Promise<Result<void>>
   if (!context.ok) return { ok: false, error: context.error };
   const { workspaceId } = context.data;
   const { data: item, error } = await supabase.from("catalog_items").update({ archived_at: new Date().toISOString() }).eq("id", id).eq("workspace_id", workspaceId).select("id").maybeSingle();
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error) };
   if (!item) return { ok: false, error: "Article introuvable." };
   revalidatePath("/fournisseurs");
   return { ok: true, data: undefined };
