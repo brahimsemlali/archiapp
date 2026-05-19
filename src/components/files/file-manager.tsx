@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,10 +22,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { uploadFileAction, getFileDownloadUrl, deleteFileAction, updateFileApprovalStatusAction } from "@/lib/actions/files";
+import { useUpgradeModal } from "@/components/billing/use-upgrade-modal";
 import { formatFileSize, formatDate } from "@/lib/format";
 import { FilePreview } from "./file-preview";
 import { ShareLinkDialog } from "./share-link-dialog";
 import { FileHistoryDialog } from "./file-history-dialog";
+import { DOCUMENT_UPLOAD_ACCEPT, isAllowedDocumentFile } from "@/lib/upload-rules";
 
 interface FileRow {
   id: string;
@@ -60,6 +63,7 @@ function isPreviewable(mimeType: string) {
 
 export function FileManager({ projectId, filesByFolder, allFiles, defaultFolders }: FileManagerProps) {
   const t = useTranslations("common");
+  const { trigger: triggerUpgrade, modal: upgradeModal } = useUpgradeModal();
   const [uploading, setUploading] = useState(false);
   const [activeFolder, setActiveFolder] = useState(defaultFolders[0] ?? "Plans");
   const [dragOver, setDragOver] = useState(false);
@@ -67,6 +71,7 @@ export function FileManager({ projectId, filesByFolder, allFiles, defaultFolders
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [shareFile, setShareFile] = useState<FileRow | null>(null);
   const [historyFile, setHistoryFile] = useState<FileRow | null>(null);
+  const [pendingDeleteFile, setPendingDeleteFile] = useState<FileRow | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const folders = [
@@ -77,13 +82,32 @@ export function FileManager({ projectId, filesByFolder, allFiles, defaultFolders
   const handleUpload = useCallback(
     async (files: FileList | null) => {
       if (!files || files.length === 0) return;
+      const selectedFiles = Array.from(files);
+      const validFiles = selectedFiles.filter((file) => {
+        if (!isAllowedDocumentFile(file)) {
+          toast.error(`${file.name} : type de fichier non autorisé.`);
+          return false;
+        }
+        if (file.size > 100 * 1024 * 1024) {
+          toast.error(`${file.name} : fichier trop lourd (max 100 Mo).`);
+          return false;
+        }
+        return true;
+      });
+      if (validFiles.length === 0) return;
+
       setUploading(true);
 
-      for (const file of Array.from(files)) {
+      for (const file of validFiles) {
         const formData = new FormData();
         formData.append("file", file);
         const result = await uploadFileAction(projectId, activeFolder, formData);
         if (!result.ok) {
+          if (result.code === "upgrade_required") {
+            setUploading(false);
+            triggerUpgrade(result.error);
+            return;
+          }
           toast.error(`Erreur : ${result.error}`);
         } else {
           toast.success(`${result.data.filename} déposé.`);
@@ -91,8 +115,9 @@ export function FileManager({ projectId, filesByFolder, allFiles, defaultFolders
       }
 
       setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     },
-    [projectId, activeFolder]
+    [projectId, activeFolder, triggerUpgrade]
   );
 
   const handleDrop = useCallback(
@@ -117,12 +142,16 @@ export function FileManager({ projectId, filesByFolder, allFiles, defaultFolders
   };
 
   const handleDelete = async (file: FileRow) => {
-    if (!confirm(`Supprimer "${file.filename}" ? Cette action est irréversible.`)) return;
-    const result = await deleteFileAction(file.id);
+    setPendingDeleteFile(file);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDeleteFile) return;
+    const result = await deleteFileAction(pendingDeleteFile.id);
     if (!result.ok) {
       toast.error(result.error);
     } else {
-      toast.success(`${file.filename} supprimé.`);
+      toast.success(`${pendingDeleteFile.filename} supprimé.`);
     }
   };
 
@@ -216,6 +245,7 @@ export function FileManager({ projectId, filesByFolder, allFiles, defaultFolders
               ref={fileInputRef}
               type="file"
               multiple
+              accept={DOCUMENT_UPLOAD_ACCEPT}
               className="hidden"
               onChange={(e) => handleUpload(e.target.files)}
             />
@@ -374,6 +404,15 @@ export function FileManager({ projectId, filesByFolder, allFiles, defaultFolders
           onClose={() => setHistoryFile(null)}
         />
       )}
+      <ConfirmDialog
+        open={!!pendingDeleteFile}
+        onOpenChange={(open) => { if (!open) setPendingDeleteFile(null); }}
+        title={`Supprimer "${pendingDeleteFile?.filename}" ?`}
+        description="Cette action est irréversible."
+        confirmLabel="Supprimer"
+        onConfirm={confirmDelete}
+      />
+      {upgradeModal}
     </>
   );
 }

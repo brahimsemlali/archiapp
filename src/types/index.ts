@@ -1,6 +1,6 @@
 export type Result<T, E = string> =
   | { ok: true; data: T }
-  | { ok: false; error: E };
+  | { ok: false; error: E; code?: "upgrade_required" | "trial_expired" | string };
 
 export type ProjectPhase =
   | "esquisse"

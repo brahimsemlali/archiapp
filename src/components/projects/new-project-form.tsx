@@ -6,6 +6,7 @@ import { ProjectForm } from "./project-form";
 import { createProjectAction } from "@/lib/actions/projects";
 import type { ProjectFormValues } from "@/lib/validators/project";
 import { toast } from "sonner";
+import { useUpgradeModal } from "@/components/billing/use-upgrade-modal";
 
 interface NewProjectFormProps {
   clients: { id: string; name: string }[];
@@ -13,9 +14,9 @@ interface NewProjectFormProps {
 }
 
 export function NewProjectForm({ clients, preselectedClientId }: NewProjectFormProps) {
-
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { trigger: triggerUpgrade, modal: upgradeModal } = useUpgradeModal();
 
   async function handleSubmit(values: ProjectFormValues) {
     setLoading(true);
@@ -23,6 +24,10 @@ export function NewProjectForm({ clients, preselectedClientId }: NewProjectFormP
     setLoading(false);
 
     if (!result.ok) {
+      if (result.code === "upgrade_required") {
+        triggerUpgrade(result.error);
+        return;
+      }
       toast.error(result.error);
       return;
     }
@@ -32,11 +37,14 @@ export function NewProjectForm({ clients, preselectedClientId }: NewProjectFormP
   }
 
   return (
-    <ProjectForm
-      clients={clients}
-      onSubmit={handleSubmit}
-      loading={loading}
-      defaultValues={preselectedClientId ? { clientId: preselectedClientId } : undefined}
-    />
+    <>
+      <ProjectForm
+        clients={clients}
+        onSubmit={handleSubmit}
+        loading={loading}
+        defaultValues={preselectedClientId ? { clientId: preselectedClientId } : undefined}
+      />
+      {upgradeModal}
+    </>
   );
 }

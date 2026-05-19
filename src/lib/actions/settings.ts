@@ -1,9 +1,10 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { WORKSPACE_ADMIN_ROLES, requireWorkspaceRole } from "@/lib/workspace";
 import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
+import { sendWelcomeEmailAction } from "@/lib/actions/auth";
 
 export interface FirmProfileValues {
   firmName?: string;
@@ -37,6 +38,14 @@ export async function updateFirmProfileAction(values: FirmProfileValues): Promis
   const patente = values.patente?.trim() || null;
   const iban = values.iban?.trim() || null;
 
+  // Check if this is the first time firm_name is being set (onboarding completion)
+  const { data: existing } = await supabase
+    .from("firm_profile")
+    .select("firm_name")
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+  const isOnboarding = !existing?.firm_name && !!firmName;
+
   const { error } = await supabase
     .from("firm_profile")
     .upsert({
@@ -57,8 +66,17 @@ export async function updateFirmProfileAction(values: FirmProfileValues): Promis
 
   if (error) return { ok: false, error: error.message };
 
+  if (isOnboarding) {
+    // Send welcome email on first onboarding completion
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user?.email) {
+      void sendWelcomeEmailAction(user.email, architectName ?? undefined, workspaceId);
+    }
+  }
+
   if (firmName) {
-    await supabase
+    const serviceSupabase = await createServiceClient();
+    await serviceSupabase
       .from("workspaces")
       .update({ name: firmName, updated_at: new Date().toISOString() })
       .eq("id", workspaceId);
