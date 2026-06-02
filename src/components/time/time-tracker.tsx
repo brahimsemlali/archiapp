@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Play, Square, Plus, Trash2, Clock, Edit2, Check, X } from "lucide-react";
+import { Plus, Trash2, Clock, Edit2, Check, X } from "lucide-react";
 import { createTimeEntryAction, updateTimeEntryAction, deleteTimeEntryAction } from "@/lib/actions/time-entries";
 import { formatMAD } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -56,13 +56,6 @@ function formatDuration(minutes: number): string {
   return h > 0 ? `${h}h${m > 0 ? String(m).padStart(2, "0") : ""}` : `${m}min`;
 }
 
-function formatTimer(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
 function getRangeDates(range: DateRange): { from: string; to: string } {
   const now = new Date();
   const pad = (d: Date) => d.toISOString().slice(0, 10);
@@ -85,17 +78,11 @@ function getRangeDates(range: DateRange): { from: string; to: string } {
 const RATE_LS_KEY = "te_last_rate_mad";
 
 export function TimeTracker({ projects, tasks, entries: initialEntries }: TimeTrackerProps) {
-  const [entries, setEntries] = useState(initialEntries);
+  const [entrySnapshot, setEntrySnapshot] = useState({
+    source: initialEntries,
+    entries: initialEntries,
+  });
   const [range, setRange] = useState<DateRange>("month");
-
-  // Timer
-  const [running, setRunning] = useState(false);
-  const [elapsed, setElapsed] = useState(0);
-  const [startTime, setStartTime] = useState<number | null>(null);
-  const [timerProject, setTimerProject] = useState("");
-  const [timerPhase, setTimerPhase] = useState("");
-  const [timerDesc, setTimerDesc] = useState("");
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Manual form
   const [showManual, setShowManual] = useState(false);
@@ -117,16 +104,17 @@ export function TimeTracker({ projects, tasks, entries: initialEntries }: TimeTr
   const [editForm, setEditForm] = useState<EditState | null>(null);
   const [editSaving, setEditSaving] = useState(false);
 
-  useEffect(() => {
-    if (running) {
-      intervalRef.current = setInterval(() => {
-        setElapsed(Math.floor((new Date().getTime() - (startTime ?? new Date().getTime())) / 1000));
-      }, 1000);
-    } else {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [running, startTime]);
+  if (entrySnapshot.source !== initialEntries) {
+    setEntrySnapshot({ source: initialEntries, entries: initialEntries });
+  }
+
+  const entries = entrySnapshot.entries;
+  const setEntries = (update: TimeEntry[] | ((currentEntries: TimeEntry[]) => TimeEntry[])) => {
+    setEntrySnapshot((current) => ({
+      source: current.source,
+      entries: typeof update === "function" ? update(current.entries) : update,
+    }));
+  };
 
   // Derived data
   const { from, to } = getRangeDates(range);
@@ -150,38 +138,6 @@ export function TimeTracker({ projects, tasks, entries: initialEntries }: TimeTr
 
   function tasksForProject(projectId: string) {
     return projectId ? tasks.filter((t) => t.project_id === projectId) : [];
-  }
-
-  // Timer
-  function handleStartStop() {
-    if (!running) {
-      setStartTime(new Date().getTime()); setElapsed(0); setRunning(true);
-    } else {
-      setRunning(false);
-      saveTimed(Math.max(1, Math.round(elapsed / 60)));
-    }
-  }
-
-  async function saveTimed(minutes: number) {
-    const result = await createTimeEntryAction({
-      projectId: timerProject || undefined,
-      phase: timerPhase || undefined,
-      description: timerDesc || undefined,
-      durationMinutes: minutes,
-      date: new Date().toISOString().slice(0, 10),
-      billable: true,
-    });
-    if (!result.ok) { toast.error(result.error); return; }
-    const project = projects.find((p) => p.id === timerProject);
-    setEntries((prev) => [{
-      id: result.data.id, project_id: timerProject || null, task_id: null,
-      phase: timerPhase || null, description: timerDesc || null,
-      duration_minutes: minutes, date: new Date().toISOString().slice(0, 10),
-      billable: true, rate_centimes: null,
-      projects: project ? { title: project.title } : null,
-    }, ...prev]);
-    toast.success(`${formatDuration(minutes)} enregistré.`);
-    setElapsed(0); setTimerDesc(""); setTimerPhase("");
   }
 
   // Manual save
@@ -268,46 +224,6 @@ export function TimeTracker({ projects, tasks, entries: initialEntries }: TimeTr
 
   return (
     <div className="space-y-6">
-      {/* Timer */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5">
-        <div className="flex items-center gap-3 mb-4">
-          <div className={cn("w-2 h-2 rounded-full transition-colors", running ? "bg-green-500 animate-pulse" : "bg-slate-300")} />
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Chronomètre</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="font-mono text-3xl font-bold text-slate-900 tabular-nums w-36">{formatTimer(elapsed)}</div>
-          <div className="flex-1 space-y-2">
-            <div className="grid grid-cols-2 gap-2">
-              <Input
-                placeholder="Description (optionnel)"
-                value={timerDesc}
-                onChange={(e) => setTimerDesc(e.target.value)}
-                className="h-8 text-sm"
-                disabled={running}
-              />
-              <Select value={timerPhase || "none"} onValueChange={(v) => setTimerPhase((v ?? "none") === "none" ? "" : (v ?? ""))} disabled={running}>
-                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Phase (optionnel)" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Aucune phase</SelectItem>
-                  {PHASES.map((ph) => <SelectItem key={ph} value={ph}>{PHASE_LABELS[ph] ?? ph}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <Select value={timerProject || "none"} onValueChange={(v) => setTimerProject((v ?? "none") === "none" ? "" : (v ?? ""))} disabled={running}>
-              <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Projet (optionnel)" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Aucun projet</SelectItem>
-                {projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <Button onClick={handleStartStop} size="lg" variant={running ? "destructive" : "default"} className="shrink-0 gap-2">
-            {running ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            {running ? "Arrêter" : "Démarrer"}
-          </Button>
-        </div>
-      </div>
-
       {/* Date range chips */}
       <div className="flex items-center gap-1.5">
         {(Object.entries(RANGE_LABELS) as [DateRange, string][]).map(([r, label]) => (
@@ -317,8 +233,8 @@ export function TimeTracker({ projects, tasks, entries: initialEntries }: TimeTr
             className={cn(
               "px-3 py-1 text-xs rounded-full border transition-colors",
               range === r
-                ? "bg-[#16170E] text-white border-[#16170E]"
-                : "border-[#E8E6DF] text-[#82806F] hover:border-[#16170E] hover:text-[#16170E]"
+                ? "bg-[#0B1220] text-white border-[#0B1220]"
+                : "border-[#E5E7EB] text-[#64748B] hover:border-[#0B1220] hover:text-[#0B1220]"
             )}
           >
             {label}

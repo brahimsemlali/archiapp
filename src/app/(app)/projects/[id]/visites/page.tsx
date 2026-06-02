@@ -6,6 +6,20 @@ import { ArrowLeft, Plus, HardHat, Camera, Sparkles } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import type { Observation } from "@/lib/actions/visites";
 import Image from "next/image";
+import { getWorkspaceId } from "@/lib/workspace";
+
+async function signObservationPhotos(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  observations: Observation[]
+): Promise<Observation[]> {
+  return Promise.all(
+    observations.map(async (observation) => {
+      if (!observation.photoPath) return observation;
+      const { data } = await supabase.storage.from("project-files").createSignedUrl(observation.photoPath, 60 * 60);
+      return { ...observation, photoUrl: data?.signedUrl };
+    })
+  );
+}
 
 export default async function VisitesPage({
   params,
@@ -14,17 +28,26 @@ export default async function VisitesPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+  const workspaceId = await getWorkspaceId(supabase);
+  if (!workspaceId) notFound();
 
   const [{ data: project }, { data: visites }] = await Promise.all([
-    supabase.from("projects").select("id, title").eq("id", id).single(),
+    supabase.from("projects").select("id, title").eq("id", id).eq("workspace_id", workspaceId).single(),
     supabase
       .from("site_visits")
       .select("id, title, visit_date, weather, attendees, observations, summary, ai_generated, created_at")
+      .eq("workspace_id", workspaceId)
       .eq("project_id", id)
       .order("visit_date", { ascending: false }),
   ]);
 
   if (!project) notFound();
+  const signedVisites = await Promise.all(
+    (visites ?? []).map(async (visite) => ({
+      ...visite,
+      observations: await signObservationPhotos(supabase, visite.observations as Observation[]),
+    }))
+  );
 
   return (
     <div className="space-y-6">
@@ -44,13 +67,14 @@ export default async function VisitesPage({
         </Link>
       </div>
 
-      {visites && visites.length > 0 ? (
+      {signedVisites.length > 0 ? (
         <div className="space-y-4">
-          {visites.map((v) => {
-            const obs = v.observations as Observation[];
+          {signedVisites.map((v) => {
+            const obs = v.observations;
             const photos = obs.filter((o) => o.photoUrl);
             return (
-              <div key={v.id} className="bg-white border rounded-xl overflow-hidden shadow-sm">
+              <Link key={v.id} href={`/projects/${id}/visites/${v.id}`} className="block">
+              <div className="bg-white border rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow cursor-pointer">
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -115,6 +139,7 @@ export default async function VisitesPage({
                   )}
                 </div>
               </div>
+              </Link>
             );
           })}
         </div>

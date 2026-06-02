@@ -21,7 +21,20 @@ export interface RecurringInvoiceValues {
   autoSend: boolean;
 }
 
-export async function createRecurringInvoiceAction(values: RecurringInvoiceValues): Promise<Result<{ id: string }>> {
+export type RecurringInvoiceRow = {
+  id: string;
+  title: string;
+  total_centimes: number;
+  frequency: string;
+  next_date: string;
+  active: boolean;
+  tva_rate: number;
+  clients?: { name: string } | null;
+  projects?: { title: string } | null;
+  items: Array<{ description: string; quantity: number; unitPrice: number; tvaRate: number }>;
+};
+
+export async function createRecurringInvoiceAction(values: RecurringInvoiceValues): Promise<Result<RecurringInvoiceRow>> {
   if (!values.title?.trim()) return { ok: false, error: "Titre requis." };
   const supabase = await createClient();
   const context = await requireWorkspaceRole(supabase);
@@ -47,11 +60,29 @@ export async function createRecurringInvoiceAction(values: RecurringInvoiceValue
     next_date: values.nextDate,
     end_date: values.endDate || null,
     auto_send: values.autoSend,
-  }).select("id").single();
+  })
+    .select("id, title, total_centimes, frequency, next_date, active, tva_rate, items, clients!recurring_invoices_client_id_fkey(name), projects!recurring_invoices_project_id_fkey(title)")
+    .single();
 
   if (error) return { ok: false, error: dbError(error) };
   revalidatePath("/factures");
-  return { ok: true, data: { id: data.id } };
+  const client = Array.isArray(data.clients) ? data.clients[0] : data.clients;
+  const project = Array.isArray(data.projects) ? data.projects[0] : data.projects;
+  return {
+    ok: true,
+    data: {
+      id: data.id,
+      title: data.title,
+      total_centimes: data.total_centimes,
+      frequency: data.frequency,
+      next_date: data.next_date,
+      active: data.active,
+      tva_rate: Number(data.tva_rate),
+      items: data.items as RecurringInvoiceRow["items"],
+      clients: client ?? null,
+      projects: project ?? null,
+    },
+  };
 }
 
 export async function toggleRecurringInvoiceAction(id: string, active: boolean): Promise<Result<void>> {

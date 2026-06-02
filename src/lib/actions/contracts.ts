@@ -12,6 +12,14 @@ import { dbError } from "@/lib/db-error";
 
 const CONTRACT_PROMPT_VERSION = "v1.1";
 
+/** Escape HTML special chars so AI-generated text can't inject markup into content_html. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 async function collectStream(userPrompt: string): Promise<string> {
   const message = await anthropic.messages.create({
     model: AI_MODEL,
@@ -139,7 +147,7 @@ export async function generateContractAction(
 
   const contractData = aiResult.data;
   const contentHtml = contractData.sections
-    .map((s) => `<h2>${s.heading}</h2><p>${s.body.replace(/\n/g, "</p><p>")}</p>`)
+    .map((s) => `<h2>${escapeHtml(s.heading)}</h2><p>${escapeHtml(s.body).replace(/\n/g, "</p><p>")}</p>`)
     .join("\n");
 
   const { data: contract, error } = await supabase

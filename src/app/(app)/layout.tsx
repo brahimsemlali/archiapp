@@ -38,6 +38,23 @@ export default async function AppLayout({
     .select("workspace_id, role, workspaces!workspace_members_workspace_id_fkey(id, name)")
     .eq("user_id", user.id)
     .order("joined_at", { ascending: true });
+  const [{ data: timerProjects }, { data: timerTasks }] = workspaceId
+    ? await Promise.all([
+        supabase
+          .from("projects")
+          .select("id, title")
+          .eq("workspace_id", workspaceId)
+          .is("archived_at", null)
+          .neq("status", "termine")
+          .order("title"),
+        supabase
+          .from("tasks")
+          .select("id, title, project_id")
+          .eq("workspace_id", workspaceId)
+          .is("archived_at", null)
+          .order("title"),
+      ])
+    : [{ data: [] }, { data: [] }];
   const workspaces = (workspaceMemberships ?? []).map((membership) => {
     const linkedWorkspace = Array.isArray(membership.workspaces)
       ? membership.workspaces[0]
@@ -67,7 +84,7 @@ export default async function AppLayout({
   }
 
   return (
-    <div className="premium-app-shell flex h-screen overflow-hidden bg-[#F7F7F4]">
+    <div className="premium-app-shell flex h-dvh min-h-dvh overflow-hidden bg-[#F7F8FA]">
       <Sidebar
         userEmail={user.email}
         workspaceName={workspace?.name}
@@ -76,9 +93,14 @@ export default async function AppLayout({
         locale={locale}
       />
       <div className="premium-main flex-1 flex flex-col overflow-hidden">
-        <Header activeWorkspaceId={workspaceId} workspaces={workspaces} />
+        <Header
+          activeWorkspaceId={workspaceId}
+          workspaces={workspaces}
+          projects={timerProjects ?? []}
+          tasks={timerTasks ?? []}
+        />
         {trialInfo?.onTrial && <TrialBanner daysLeft={trialInfo.daysLeft} />}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
+        <main className="flex-1 overflow-y-auto p-3 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:p-4 sm:pb-[calc(1rem+env(safe-area-inset-bottom))] md:p-6">
           <AppContentShell>{children}</AppContentShell>
         </main>
         <div className="md:hidden fixed bottom-4 end-4 z-50">

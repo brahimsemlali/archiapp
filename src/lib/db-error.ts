@@ -12,6 +12,8 @@ export function dbError(err: { message?: string; code?: string }): string {
   if (code === "23503") return "Référence invalide ou introuvable.";
   // Not null / check constraint
   if (code === "23502" || code === "23514") return "Données manquantes ou invalides.";
+  // Invalid date/time input
+  if (code === "22007" || code === "22008") return "Date invalide.";
   // RLS violation
   if (code === "42501" || msg.includes("row-level security")) return "Accès non autorisé.";
   // Insufficient privilege

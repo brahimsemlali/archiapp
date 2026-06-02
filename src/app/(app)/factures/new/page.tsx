@@ -1,8 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { FactureForm } from "@/components/factures/facture-form";
 import type { DevisItem } from "@/lib/validators/devis";
+import { getWorkspaceId } from "@/lib/workspace";
+import { getTranslations } from "next-intl/server";
 
 export default async function NewFacturePage({
   searchParams,
@@ -10,11 +13,22 @@ export default async function NewFacturePage({
   searchParams: Promise<{ clientId?: string; projectId?: string; fromDevis?: string }>;
 }) {
   const params = await searchParams;
+  const t = await getTranslations("factures");
   const supabase = await createClient();
+  const workspaceId = await getWorkspaceId(supabase);
+  if (!workspaceId) redirect("/onboarding");
 
-  const [{ data: clients }, { data: projects }] = await Promise.all([
-    supabase.from("clients").select("id, name").is("archived_at", null).order("name"),
-    supabase.from("projects").select("id, title, client_id").is("archived_at", null).order("title"),
+  const [{ data: clients }, { data: projects }, { data: selectedProject }] = await Promise.all([
+    supabase.from("clients").select("id, name").eq("workspace_id", workspaceId).is("archived_at", null).order("name"),
+    supabase.from("projects").select("id, title, client_id").eq("workspace_id", workspaceId).is("archived_at", null).order("title"),
+    params.projectId
+      ? supabase
+          .from("projects")
+          .select("id, client_id")
+          .eq("id", params.projectId)
+          .eq("workspace_id", workspaceId)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   // If converting from a devis, pre-fill
@@ -33,6 +47,7 @@ export default async function NewFacturePage({
       .from("devis")
       .select("*")
       .eq("id", params.fromDevis)
+      .eq("workspace_id", workspaceId)
       .single();
 
     if (devis) {
@@ -47,6 +62,8 @@ export default async function NewFacturePage({
       };
     }
   }
+  const defaultClientId = devisDefaults.clientId ?? params.clientId ?? selectedProject?.client_id;
+  const defaultProjectId = devisDefaults.projectId ?? selectedProject?.id ?? params.projectId;
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -55,9 +72,9 @@ export default async function NewFacturePage({
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Nouvelle facture</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("newTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {params.fromDevis ? "Facture créée depuis un devis accepté" : "Créer une facture professionnelle"}
+            {params.fromDevis ? t("newFromDevis") : t("newSubtitle")}
           </p>
         </div>
       </div>
@@ -66,8 +83,8 @@ export default async function NewFacturePage({
         clients={clients ?? []}
         projects={projects ?? []}
         defaultValues={{
-          clientId: params.clientId,
-          projectId: params.projectId,
+          clientId: defaultClientId,
+          projectId: defaultProjectId,
           ...devisDefaults,
         }}
       />

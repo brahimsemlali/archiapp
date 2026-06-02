@@ -1,14 +1,15 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { getWorkspaceId } from "@/lib/workspace";
+import { requireActiveWorkspace } from "@/lib/workspace";
 import type { Result } from "@/types";
 import type { SmartAlert } from "@/components/notifications/smart-notifications-panel";
 
 export async function getNotificationAlertsAction(): Promise<Result<SmartAlert[]>> {
   const supabase = await createClient();
-  const workspaceId = await getWorkspaceId(supabase);
-  if (!workspaceId) return { ok: false, error: "Non authentifié." };
+  const workspace = await requireActiveWorkspace(supabase);
+  if (!workspace.ok) return { ok: false, error: workspace.error };
+  const { workspaceId } = workspace.data;
 
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);

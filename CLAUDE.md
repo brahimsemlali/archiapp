@@ -1,4 +1,6 @@
-# ArchiDesk — Claude Code Project Guide
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 > This file is the source of truth for Claude Code. Read it at the start of every session before writing code. If something here is wrong or out of date, fix this file first, then code.
 
@@ -6,560 +8,619 @@
 
 ## 1. What we're building
 
-**ArchiDesk** is a business management SaaS for **architects, decorators, and design studios in Morocco**. It replaces the chaos of email + WhatsApp + Excel + paper contracts with one place where a project lives from first client call to final delivery.
+**ArchiDesk** is a **vertical SaaS platform** for architects, decorators, and design studios across Morocco and the Maghreb. It is not a side project — the goal is a **$1M ARR business** within 24 months of launch.
 
-**MVP primary user:** A Moroccan **solo architect** running their own practice, working in French, billing in MAD, dealing with 5-30 active projects at a time. Build *for this person first.* Decorator and small-studio support comes in later phases — but the schema and architecture must not lock them out.
+The product replaces the chaos of WhatsApp + Excel + paper contracts + random Dropbox folders with one operating system where an entire design practice runs: from first client contact to final delivery, from initial devis to last payment, from site visit photos to signed invoices.
 
-**Core value proposition (MVP):** "Generate a contract in 2 minutes, not 2 hours. Send a file to a client without losing it in WhatsApp."
+**Primary market:** Moroccan solo architects and small studios (1–10 people), working in French, billing in MAD, managing 5–30 active projects.
 
-**Long-term vision:** the daily operating system for any Moroccan design professional — architect, decorator, interior designer, small studio. See section 13 for the full vision and section 9 for the phased roadmap. **The MVP scope in section 2 does not change because of the long-term vision.** When in doubt, build less, ship sooner, learn from real users.
+**Expansion market (18 months):** All of Morocco (architects + decorators + interior designers) → Algeria → Tunisia → Gulf (Arabic + multi-currency).
 
----
+**Revenue model:** Subscription SaaS, 3 tiers. Target blended ARPU: 400 MAD/month. At 2,500 paying workspaces = 1M MAD/month ≈ $1M ARR.
 
-## 2. MVP scope (v1.0) — what to build
+**Positioning:** The operating system for Moroccan design professionals — the way Linear is for software teams, the way QuickBooks is for accountants. Category-defining, not feature-matching.
 
-The MVP has **exactly 4 modules**. Anything outside this list is **out of scope** until v1.0 is shipped and used by real people.
-
-### 2.1 Projects & Clients (the spine)
-
-**Clients**
-- Create / edit / archive (soft delete) clients
-- Fields: `name`, `type` (particulier | société), `phone`, `email`, `address`, `ice` (Identifiant Commun de l'Entreprise — for sociétés), `cin` (Carte d'Identité Nationale — for particuliers), `notes`, `created_at`
-- List view with search by name/phone, filter by type
-- Single client page shows their projects + contracts + activity log
-
-**Projects**
-- Create / edit / archive
-- Fields: `title`, `client_id`, `type` (villa | appartement | immeuble | commercial | rénovation | aménagement | autre), `address`, `surface_m2`, `phase` (esquisse | APS | APD | PC | DCE | chantier | réception | terminé), `status` (actif | en_attente | suspendu | terminé | archivé), `budget_estimate_mad`, `fees_mad`, `start_date`, `target_end_date`, `notes`
-- List view: cards or table, filters by phase / status / client, sort by recent activity
-- Single project page tabs: **Overview** (key info, recent activity), **Files**, **Contracts**, **Notes** (markdown notepad)
-
-### 2.2 AI Contract Generation (the differentiator)
-
-**Flow:**
-1. User clicks "Nouveau contrat" on a project (or standalone)
-2. Form collects: contract type (Contrat d'architecte mission complète | mission partielle | étude de faisabilité | suivi de chantier | autre), client (auto-filled from project), project (auto-filled), `mission_scope` (multi-select of phases), `fees_mad`, `payment_schedule` (free text or template: "30% à la signature, 30% APD, 30% PC, 10% réception"), `deadlines`, `special_clauses` (free text)
-3. Backend calls **Anthropic Claude API** (`claude-sonnet-4-6`) with a system prompt anchored in **Moroccan architecture practice (Loi 016-89 relative à l'exercice de la profession d'architecte, barème indicatif de l'Ordre National des Architectes)**
-4. AI returns a structured contract in **French**, with sections: Préambule, Objet, Mission, Honoraires, Modalités de paiement, Délais, Obligations des parties, Propriété intellectuelle, Litiges, Signatures
-5. User reviews in a rich-text editor (TipTap), edits freely
-6. Export to **PDF** with the firm's letterhead (logo, name, ICE, address pulled from settings)
-7. Save versions; each edit creates a new version. Store the original AI prompt + response for audit.
-
-**Important constraints:**
-- Disclaimer always shown: *"Ce contrat est généré par IA. Faites-le valider par un juriste avant signature."*
-- Never invent legal article numbers. The AI is told to use generic phrasing or cite Loi 016-89 only when explicitly relevant.
-- Contracts always store the AI model + prompt version used (for traceability).
-
-### 2.3 Files & Versioning (the daily driver)
-
-**Upload**
-- Drag-and-drop multi-file upload to a project
-- Per-project folders (created automatically): `Plans`, `Rendus`, `Documents`, `Photos`, `Autre`. User can create custom folders.
-- Max single file size: **100 MB** for MVP (Supabase free tier limit awareness).
-- Allowed extensions: any (no blocklist) — but warn for executables.
-
-**Versioning**
-- Uploading a file with the same name in the same folder creates **v2, v3, …** instead of overwriting.
-- Each version stores: `uploaded_by`, `uploaded_at`, `size`, `note` (optional).
-- UI shows latest version by default with a "voir l'historique" link.
-
-**Preview**
-- Inline preview for: **PDF** (via PDF.js), **JPG, PNG, WebP, SVG** (native `<img>`).
-- DWG / RVT / IFC / DXF: show icon + filename + size + "Télécharger" button. **No preview attempted in MVP** — proper CAD preview needs Autodesk Platform Services (paid) and is explicitly v2.
-- Other types (DOCX, XLSX, ZIP, etc.): icon + download.
-
-**Sharing**
-- "Générer un lien de partage" for a file or folder → produces a **signed URL valid 7 days** (configurable: 1d / 7d / 30d / never expires).
-- Link recipient does NOT need an account. They see a clean download page with the firm's branding.
-- All shares are logged: who shared, what, when, expiry.
-
-### 2.4 Cross-cutting (always present)
-
-- **Dashboard home** (`/`): "Aujourd'hui" — recent activity (last 20 events across all projects), active projects count by phase, contracts awaiting export, recent files
-- **Settings** (`/settings`): firm profile — logo upload, firm name, architect name, ICE, RC, IF, CNSS, patente, address, phone, email, IBAN. Used in contract PDFs and share-link branding.
-- **Auth**: email + password and Google OAuth via Supabase Auth. Single user per account at MVP (no team).
-- **Language**: French only at MVP. All UI strings go through `next-intl` from day one (so v1.1 can add Arabic without a rewrite).
-- **Currency**: MAD only. Display format: `1 234,56 DH` (French locale, "DH" suffix). Store as integers in **centimes** (smallest unit) in the DB to avoid float math.
-- **PWA**: installable, with manifest + service worker, offline shell + cached assets only (no offline data sync in MVP).
-- **Responsive**: works on mobile (375px+), tablet, desktop. Mobile is read/light-edit; heavy entry assumed desktop.
+**Defensible moat:** AI contracts grounded in Moroccan law (Loi 016-89 + ONA barème) + WhatsApp-native workflow + MAD/TVA/ICE/RC handled correctly + bilingual French/Arabic. No European or American SaaS does all four.
 
 ---
 
-## 3. Explicitly OUT of scope for MVP
+## 2. Current product state — what is built
 
-Do not build these. If the user asks, remind them they're scheduled for later phases. They are listed in section 9.
+Everything listed here is **already in production** and must not be broken. Build on top of it.
 
-- Client portal / external client login
-- Time tracking, timers, timesheets
-- Invoicing, payment processing, TVA, payment gateways
-- Tasks, to-dos, kanban, mentions, comments, team members
-- DWG / RVT / IFC inline preview
-- Email or SMS notifications (in-app activity feed only)
-- Calendar / Google Calendar integration
-- Mobile native apps (it's a PWA)
-- Multi-language UI beyond French
-- Multi-currency
-- AI features beyond contract generation (no chatbot, no auto-tagging, no smart search)
+### 2.1 Core modules (live)
+
+**Projects & Clients**
+- Full CRUD with soft delete (`archived_at`)
+- Project phases: esquisse → APS → APD → PC → DCE → chantier → réception → terminé
+- Kanban board view + list view (persisted in `localStorage`)
+- Phase deliverables checklist (stored in `projects.metadata.checklist`)
+- Inspiration board per project (images stored in `projects.metadata.inspirations`, grid layout)
+- Permis de construire tracker — 5-stage PC workflow with doc checklists, deadlines, notes (stored in `permit_stages` table)
+- Single project page tabs: Vue d'ensemble, Fichiers, Contrats, Devis, Factures, Livrables, Inspirations, Permis de construire, Notes, Chantier, Discussion
+- Client detail page tabs: Projets, Contrats, Devis, Factures, Activité, Informations, **Portail** (with green dot indicator when active)
+
+**Contracts**
+- AI generation via Claude (`claude-sonnet-4-6`) anchored in Loi 016-89
+- TipTap rich-text editor
+- PDF export with firm letterhead
+- Version history
+- **E-signature**: canvas signature pad (mouse/touch) → SVG stored in `signatures` table; shown on client portal for finalized contracts; signature status shown on architect's contract page
+
+**Files**
+- Drag-and-drop upload, Supabase Storage
+- Per-project folders (Plans, Rendus, Documents, Photos, Autre + custom)
+- File versioning (v1, v2, …)
+- PDF + image inline preview
+- Signed share links (public, no login, configurable expiry)
+- Client approval flow: `approval_status` (not_required / pending / approved / rejected), `approved_at`, `approval_note` on `files` table
+
+**Devis (quotes)**
+- Line-item builder, TVA 20%, PDF with letterhead
+- Status flow: brouillon → envoyé → accepté / refusé / expiré
+- Accept/reject tracking, expiry alerts
+
+**Factures (invoices)**
+- Sequential legally-required numbering (FA-YYYY-NNN)
+- Mark-paid flow with `paid_at` timestamp
+- PDF with payment banner
+- Overdue highlighting + dashboard alerts
+- Convert accepted devis → facture
+- Edit page: `/factures/[id]/edit`
+
+**Visites chantier (site visits)**
+- Mobile-first entry: title, date, weather, attendees
+- Per-zone observations with photos
+- AI summary generation (Claude API)
+- PDF report export
+
+**Tasks & Agenda**
+- Task CRUD: title, description, due date, priority (haute/moyenne/basse), status (à faire/en cours/terminé)
+- Linked to project and/or client
+- Task assignment to workspace members; "Mes tâches" filter
+- Grouped list view with collapsible status sections, overdue alerts
+- Unified calendar view (month grid): tasks + project deadlines + devis expiry + facture due dates + visites
+- Selected-day side panel with event detail
+- **Quick-create task from calendar**: "Nouvelle tâche" button in calendar header + "+" in right panel + "Ajouter une tâche ce jour" in day popup — all open a Dialog with `TaskForm` pre-filled with the selected date (`defaultDueDate` prop); `router.refresh()` on success
+- `TaskForm` accepts `defaultDueDate?: string` prop to pre-fill date without triggering edit mode
+
+**Time tracking**
+- Real-time stopwatch (start/stop) with project + description
+- Manual entry: project, phase, hours/mins, date, billable/non-billable
+- Monthly stats: total / billable / non-billable
+- Entries grouped by date, stored in `time_entries` table
+
+**Financial reports** (`/rapports`)
+- KPI cards: encaissé TTC, en attente, en retard, TVA collectée
+- Monthly bar chart (billed vs paid)
+- Quarterly TVA table (T1–T4) for tax declaration
+- Aging buckets (current / 0–30 / 31–60 / >60 days) + overdue invoice list
+- **Bank reconciliation** tab: CSV import (CIH/Attijari/BMCE format), auto-match to unpaid invoices by amount (exact or ±5%), one-click mark-paid
+
+**Dashboard** (`/dashboard`)
+- 4 financial KPI cards: encaissé ce mois (with % delta vs last month), à encaisser (with overdue badge), devis envoyés (total value), CA annuel
+- Expiring devis alert strip (chips with days remaining, only shown when relevant)
+- 3-column main panel: Facturation (overdue invoices red + pending invoices with due-date countdown), Projets actifs (phase badge + deadline countdown), right column (urgent tasks + next site visit + quick stats + activity feed)
+- Firm setup banner when `firm_name` is null
+- Quick-action buttons in header: "+ Devis" and "+ Projet"
+- Route: `src/app/(app)/dashboard/page.tsx` (the old `src/app/(app)/page.tsx` was deleted)
+
+**Global Search**
+- Cmd+K command palette
+- Searches: clients, projects, contracts, devis, factures
+- Grouped results, keyboard-navigable
+
+**Project portal** (`/portal/[token]`)
+- Magic-link access via `share_links` table (`resource_type='project'`), no client account needed
+- Shows: project phase progress, files by folder (with signed download URLs), contracts, firm contact info
+- **E-signature**: finalized contracts show signature pad; signed contracts show confirmation with signer name + date
+- Client can upload documents, respond to devis, send messages, approve/reject files
+- Access counter tracked on `share_links`
+- Components: `src/components/portal/portal-actions.tsx`
+
+**Client portal** (`/portal/client/[token]`)
+- Magic-link access via `share_links` table (`resource_type='client'`), no client account needed
+- Aggregates **all** data associated with the client across all projects
+- Sections: Projets (phase stepper per project), Contrats (e-signature), Devis (accept/refuse + PDF download), Factures (status + PDF download), Comptes-rendus (site visits + meeting notes), Inspirations (linked moodboards), Historique (activity timeline), Discussion (messaging)
+- Sticky header (firm branding + logo) + sticky section nav bar
+- PDF downloads: `/api/portal/client/[token]/devis/[id]/pdf` and `/api/portal/client/[token]/factures/[id]/pdf`
+- Client sends messages → stored in `portal_messages` with `client_id`, `project_id=null`
+- Architect replies from client profile "Portail" tab → `replyToClientPortalAction`
+- Activity timeline with color-coded icons per action type
+- Components: `src/components/portal/client-portal-actions.tsx`
+- **Manage from client profile**: "Portail" tab in `/clients/[id]` — create/regenerate/revoke link, copy URL, see access count + last visit, message thread with reply form
+
+**Multi-user workspaces**
+- `workspace_members` + `workspace_invites` tables
+- Roles: owner / admin / member / viewer
+- Invite by email → token link → `src/app/invite/[token]/page.tsx`
+- Team management UI in settings
+- All RLS uses `workspace_members` (not `owner_id`) — zero schema change needed for future role extensions
+
+**Comments**
+- `comments` table: polymorphic `(resource_type, resource_id)` — works on any entity
+- `CommentsSection` component wired into project "Discussion" tab
+- Author initials avatar, relative timestamps, delete own comments
+
+**Subcontractor CRM**
+- `subcontractors` table with trade categories (19 options), star ratings (1–5), CNSS/RIB
+- Card grid layout with search by name/trade
+- Inline edit via Sheet
+
+**Moodboards** (`/moodboards`)
+- Standalone moodboards (not project-scoped), optionally linked to a client
+- `moodboards` table: `workspace_id`, `client_id`, `title`, `description`, `items jsonb`, `created_at`, `updated_at`
+- `items` is a JSONB array of `InspirationItem` (`id`, `url`, `caption`, `source`, `uploadedAt`)
+- Masonry grid display using CSS `columns-*`; images rendered via plain `<img>` (not `<Image>`) to avoid Next.js domain restrictions
+- Two ways to add images:
+  1. **Upload**: drag/click file → uploaded to `project-files` Supabase Storage at `{workspaceId}/moodboards/{moodboardId}/{timestamp}.{ext}`; public URL stored in `items[].url`
+  2. **Paste a link**: any web page URL → server fetches `og:image` + `og:title` from HTML; direct image URLs used as-is — the external URL is stored directly in `items[].url` (no server-side re-hosting); original URL stored in `items[].source`
+- `addMoodboardLinkAction` in `src/lib/actions/moodboards.ts`: validates URL, extracts og:image/title, stores URL directly (no download/re-host)
+- `MoodboardBoard` component: two-tab form (Télécharger / Coller un lien), optimistic UI updates, trash-to-remove with rollback
+- Moodboards linked to a client are shown in the client portal under "Inspirations"
+
+**AI features**
+- Project summary: reads project + tasks + devis + factures + visits → 150-200 word French briefing via `AiSummaryButton` on project overview
+- Client email draft: context-aware professional French email (`generateClientEmailAction`)
+- File classification: rule-based folder suggestion (no AI call), `classifyFileAction`
+- Site visit summary: Claude generates structured summary from observations
+- Meeting intelligence: AI summary + decisions extraction from meeting notes
+
+**Settings**
+- Firm profile: logo, name, architect name, ICE, RC, IF, CNSS, patente, address, phone, email, IBAN
+- **Portfolio settings**: slug, enabled toggle, tagline, specialties — controls public portfolio page
+- Team members management
+
+**Public portfolio pages** (`/p/[slug]`)
+- Publicly accessible, no auth
+- Shows firm branding, project cards with cover image from inspiration board
+- Configurable via settings: slug, tagline, specialties
+- Pulls from `firm_profile.slug + portfolio_enabled + portfolio_featured_project_ids`
+- SEO metadata via `generateMetadata`
+
+**Localization (French + Arabic)**
+- `src/messages/fr.json` — complete French
+- `src/messages/ar.json` — complete Arabic translation
+- Locale stored in cookie (`locale`), switched via `setLocaleAction`
+- `dir="rtl"` set dynamically on `<html>` when `locale === "ar"`
+- Cairo font for Arabic, Plus Jakarta Sans for French/Latin
+- Language switcher in sidebar bottom section
+
+**Push notifications (browser)**
+- `push_subscriptions` table
+- `PushNotificationToggle` in sidebar — requests permission, subscribes via `PushManager`
+- Service worker handles `push` + `notificationclick` events
+- Server-side sender in `src/lib/push.ts` (requires `web-push` package + VAPID keys)
+- VAPID config via `NEXT_PUBLIC_VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY`
+
+**PWA**
+- `manifest.json`, service worker (`public/sw.js` — cache-first static, network-first navigation)
+
+**Additional modules (live)**
+- `/bareme` — ONA fee schedule reference
+- `/boq` — Bill of quantities (BOQ) with line items, linked to projects
+- `/workload` — Team workload view
+- `/prospects` — Lead/prospect CRM
+- `/fournisseurs` — Supplier management
+- `/templates` — Contract/devis template library
+
+### 2.2 Infrastructure
+
+- Supabase Auth (email + Google OAuth)
+- RLS on every table — workspace isolation via `workspace_members`
+- `workspace_id` on every business row
+- `metadata jsonb` on clients, projects, contracts, files (extension-ready)
+- Soft delete everywhere (`archived_at`)
+- Activity log for all mutations (`activity_log.client_id` populated when action is client-scoped)
+- next-intl i18n (French + Arabic, locale cookie-based)
+- PWA manifest + service worker with push notification support
+- **Next.js 16 middleware**: `src/proxy.ts` (NOT `src/middleware.ts` — that file must not exist, it conflicts with Next.js 16)
 
 ---
 
-## 4. Tech stack — non-negotiable
+## 3. Database tables (all live in Supabase)
 
-| Layer | Choice | Why |
-|---|---|---|
-| Framework | **Next.js 15** (App Router) | Single codebase, server components, Vercel deploy |
-| Language | **TypeScript strict** | Catch bugs at build time |
-| Styling | **Tailwind CSS** + **shadcn/ui** | Fast, consistent, no design debt |
-| Forms | **react-hook-form** + **zod** | Type-safe validation client + server |
-| DB / Auth / Storage | **Supabase** (PostgreSQL, Auth, Storage) | One service, free tier, RLS for security |
-| ORM | **Drizzle** (preferred) or Supabase JS client | Type-safe queries; Drizzle for complex joins, Supabase client for simple reads |
-| AI | **Anthropic SDK** (`@anthropic-ai/sdk`), model `claude-sonnet-4-6` | Contract generation only |
-| Rich text | **TipTap** | Contract editor |
-| PDF generation | **@react-pdf/renderer** (server-side) | Contracts + share-link branding |
-| File preview | **react-pdf** (PDF.js wrapper), native `<img>` | Inline preview |
-| i18n | **next-intl** | French at MVP, scaffold for Arabic later |
-| Date handling | **date-fns** with `fr` locale | French date formatting |
-| Deployment | **Vercel** | Zero-config, edge functions, PWA-friendly |
-| Package manager | **pnpm** | Fast, disk-efficient |
+| Table | Key columns |
+|---|---|
+| `workspaces` | `id`, `owner_id`, `name`, `plan`, `trial_ends_at`, `stripe_customer_id`, `account_status` |
+| `workspace_members` | `workspace_id`, `user_id`, `role` (owner\|admin\|member\|viewer), `joined_at` |
+| `workspace_invites` | `workspace_id`, `email`, `role`, `token`, `status` (pending\|accepted\|revoked), `expires_at` |
+| `firm_profile` | `workspace_id` PK, `firm_name`, `architect_name`, `logo_url`, `iban`, `ice`, `rc`, `if_number`, `cnss`, `patente`, `address`, `phone`, `email`, `slug`, `portfolio_enabled`, `portfolio_tagline`, `portfolio_specialties`, `portfolio_featured_project_ids` |
+| `clients` | `workspace_id`, `name`, `type`, `phone`, `email`, `address`, `ice`, `cin`, `notes`, `metadata jsonb`, `archived_at` |
+| `projects` | `workspace_id`, `client_id`, `title`, `type`, `address`, `surface_m2`, `phase`, `status`, `budget_estimate_centimes`, `fees_centimes`, `start_date`, `target_end_date`, `notes`, `metadata jsonb` (checklist + inspirations), `archived_at` |
+| `contracts` | `workspace_id`, `project_id`, `client_id`, `type`, `title`, `content_json`, `content_html`, `ai_model`, `status`, `version`, `parent_contract_id` |
+| `signatures` | `contract_id` (unique), `signer_name`, `signer_email`, `signed_at`, `svg_data`, `ip_address` — RLS via contracts join |
+| `files` | `workspace_id`, `project_id`, `folder`, `filename`, `storage_path`, `size_bytes`, `mime_type`, `version`, `parent_file_id`, `note`, `approval_status`, `approved_at`, `approval_note` |
+| `share_links` | `workspace_id`, `resource_type` (enum: project\|client\|file), `resource_id`, `token`, `expires_at`, `accessed_count`, `last_accessed_at` |
+| `activity_log` | `workspace_id`, `project_id`, `client_id`, `action`, `metadata jsonb` |
+| `devis` | `workspace_id`, `project_id`, `client_id`, `number`, `title`, `items jsonb`, `subtotal_centimes`, `tva_rate`, `tva_centimes`, `total_centimes`, `valid_until`, `status`, `metadata jsonb`, `updated_at` |
+| `factures` | `workspace_id`, `project_id`, `client_id`, `devis_id`, `number`, `title`, `items jsonb`, `subtotal_centimes`, `tva_centimes`, `total_centimes`, `due_date`, `paid_at`, `status` |
+| `site_visits` | `workspace_id`, `project_id`, `title`, `visit_date`, `weather`, `attendees`, `observations jsonb`, `summary` |
+| `meeting_notes` | `workspace_id`, `project_id`, `title`, `meeting_date`, `summary`, `decisions jsonb` |
+| `tasks` | `workspace_id`, `project_id`, `client_id`, `title`, `description`, `due_date`, `priority`, `status`, `assigned_to` (FK auth.users), `archived_at` |
+| `time_entries` | `workspace_id`, `project_id`, `user_id`, `phase`, `description`, `duration_minutes`, `date`, `billable`, `rate_centimes` |
+| `comments` | `workspace_id`, `resource_type`, `resource_id`, `author_id`, `body`, `mentions jsonb`, `resolved_at` |
+| `permit_stages` | `workspace_id`, `project_id`, `stage`, `status`, `deadline`, `docs jsonb`, `notes`, `completed_at` |
+| `subcontractors` | `workspace_id`, `name`, `trade`, `phone`, `email`, `address`, `cnss`, `rib`, `rating`, `notes`, `archived_at` |
+| `moodboards` | `workspace_id`, `client_id` (nullable), `title`, `description`, `items jsonb`, `created_at`, `updated_at` |
+| `portal_messages` | `workspace_id`, `project_id` (nullable), `client_id` (nullable), `share_token`, `sender` (client\|architect), `sender_name`, `body` |
+| `push_subscriptions` | `workspace_id`, `user_id`, `endpoint`, `p256dh`, `auth` |
+| `templates` | `workspace_id`, `type`, `title`, `content_json`, `content_html` |
+| `prospects` | `workspace_id`, `name`, `email`, `phone`, `status`, `notes`, `metadata jsonb` |
+| `suppliers` | `workspace_id`, `name`, `trade`, `phone`, `email`, `address`, `notes`, `archived_at` |
 
-**Versions:** always use the latest stable at install time. Pin in `package.json` after install.
-
----
-
-## 5. Project structure
-
-```
-archidesk/
-├── CLAUDE.md                    # this file
-├── README.md                    # human-facing setup
-├── .env.local.example           # env vars template
-├── next.config.ts
-├── tailwind.config.ts
-├── drizzle.config.ts
-├── package.json
-├── public/
-│   ├── icons/                   # PWA icons
-│   └── manifest.json
-├── src/
-│   ├── app/                     # Next.js App Router
-│   │   ├── (auth)/              # login, signup
-│   │   │   ├── login/
-│   │   │   └── signup/
-│   │   ├── (app)/               # authenticated routes
-│   │   │   ├── layout.tsx       # sidebar shell
-│   │   │   ├── page.tsx         # dashboard
-│   │   │   ├── clients/
-│   │   │   │   ├── page.tsx
-│   │   │   │   └── [id]/page.tsx
-│   │   │   ├── projects/
-│   │   │   │   ├── page.tsx
-│   │   │   │   └── [id]/
-│   │   │   │       ├── page.tsx          # overview
-│   │   │   │       ├── files/page.tsx
-│   │   │   │       ├── contracts/page.tsx
-│   │   │   │       └── notes/page.tsx
-│   │   │   ├── contracts/
-│   │   │   │   ├── new/page.tsx
-│   │   │   │   └── [id]/page.tsx
-│   │   │   └── settings/page.tsx
-│   │   ├── share/[token]/       # public share-link viewer (no auth)
-│   │   ├── api/
-│   │   │   ├── contracts/generate/route.ts   # AI call
-│   │   │   ├── contracts/[id]/pdf/route.ts   # PDF export
-│   │   │   ├── files/upload/route.ts
-│   │   │   └── share/[token]/route.ts
-│   │   ├── layout.tsx
-│   │   └── globals.css
-│   ├── components/
-│   │   ├── ui/                  # shadcn primitives
-│   │   ├── layout/              # sidebar, header
-│   │   ├── clients/
-│   │   ├── projects/
-│   │   ├── contracts/
-│   │   └── files/
-│   ├── lib/
-│   │   ├── supabase/            # server + client + middleware helpers
-│   │   ├── db/                  # drizzle schema + queries
-│   │   ├── ai/                  # Anthropic client + prompts
-│   │   ├── pdf/                 # contract PDF templates
-│   │   ├── i18n/                # next-intl config
-│   │   ├── format.ts            # currency, date helpers
-│   │   └── validators/          # zod schemas
-│   ├── messages/                # i18n strings
-│   │   └── fr.json
-│   └── types/                   # shared TS types
-├── drizzle/                     # migrations
-└── supabase/
-    └── migrations/              # SQL for RLS policies
-```
-
----
-
-## 6. Database schema (Supabase / Postgres)
-
-All tables have `id uuid pk default gen_random_uuid()`, `created_at timestamptz default now()`, `updated_at timestamptz default now()`, and `owner_id uuid references auth.users(id)`. **Row-Level Security (RLS) is mandatory on every table** — a user only ever sees their own rows.
-
-### Future-proofing rules (apply now, even at MVP)
-
-These cost almost nothing to add today and unlock entire roadmap phases later. **Do them from day one.**
-
-- **`workspace_id` on every business table.** Even though MVP is single-user, every row carries a `workspace_id` (defaults to a workspace auto-created on signup, where `workspace.owner_id = user.id`). This is what enables multi-user firms in v1.3 without a migration nightmare.
-- **`profile_type` on `firm_profile`** (`architect | decorator | studio | other`, default `architect`). Drives default folder structures, contract templates, and module visibility in later phases. MVP UI hides this and defaults to `architect`.
-- **`metadata jsonb`** column on `clients`, `projects`, `contracts`, `files`. Lets later phases attach feature-specific data (e.g., room tags for decorators, permit status for architects) without schema migrations.
-- **Soft delete everywhere** (`archived_at timestamptz null`). Never hard-delete user data in MVP.
-- **Polymorphic-ready join tables.** When a feature needs "this thing belongs to a project OR a client OR a contract," use `(resource_type, resource_id)` columns rather than three nullable FKs.
-
-### Tables
-
-**`workspaces`** *(future-proofing — single row per user at MVP)*
-- `owner_id` (FK auth.users, unique at MVP)
-- `name` (defaults to firm name)
-- `plan` (enum: `solo`, `studio`, `agence`, default `solo` — billing scaffold, no enforcement at MVP)
-
-**`firm_profile`** (one row per workspace)
-- `workspace_id` (PK, FK workspaces)
-- `profile_type` (enum: `architect`, `decorator`, `studio`, `other`, default `architect`)
-- `firm_name`, `architect_name`, `logo_url`, `address`, `phone`, `email`
-- `ice`, `rc`, `if`, `cnss`, `patente`, `iban`
-
-**`clients`**
-- `workspace_id` (FK workspaces)
-- `name`, `type` (enum: `particulier`, `societe`)
-- `phone`, `email`, `address`
-- `ice` (nullable), `cin` (nullable)
-- `notes` (text)
-- `metadata` (jsonb default `'{}'`)
-- `archived_at` (nullable)
-
-**`projects`**
-- `workspace_id` (FK workspaces)
-- `client_id` (FK clients)
-- `title`, `type` (enum), `address`, `surface_m2` (numeric)
-- `phase` (enum), `status` (enum)
-- `budget_estimate_centimes` (bigint), `fees_centimes` (bigint)
-- `start_date`, `target_end_date` (date, nullable)
-- `notes` (markdown text)
-- `metadata` (jsonb default `'{}'`)
-- `archived_at` (nullable)
-
-**`contracts`**
-- `workspace_id` (FK workspaces)
-- `project_id` (FK, nullable for standalone), `client_id` (FK)
-- `type` (enum)
-- `title`
-- `content_json` (jsonb — TipTap document)
-- `content_html` (text — rendered for PDF)
-- `ai_prompt` (text), `ai_response_raw` (text), `ai_model` (text)
-- `status` (enum: `brouillon`, `finalise`, `archive`)
-- `version` (int, starts at 1)
-- `parent_contract_id` (FK self, nullable — for version chain)
-- `metadata` (jsonb default `'{}'`)
-
-**`files`**
-- `workspace_id` (FK workspaces)
-- `project_id` (FK)
-- `folder` (text — `Plans`, `Rendus`, etc., or custom)
-- `filename` (text — original name)
-- `storage_path` (text — Supabase Storage path)
-- `size_bytes` (bigint), `mime_type` (text)
-- `version` (int, default 1)
-- `parent_file_id` (FK self, nullable — for version chain)
-- `note` (text, nullable)
-- `metadata` (jsonb default `'{}'`)
-
-**`share_links`**
-- `workspace_id` (FK workspaces)
-- `resource_type` (enum: `file`, `folder`)
-- `resource_id` (uuid — file id or composite folder ref)
-- `token` (text, unique, random 32 chars)
-- `expires_at` (timestamptz, nullable)
-- `accessed_count` (int default 0)
-- `last_accessed_at` (timestamptz, nullable)
-
-**`activity_log`**
-- `workspace_id` (FK workspaces)
-- `project_id` (FK, nullable)
-- `client_id` (FK, nullable)
-- `action` (text — e.g., `project.created`, `file.uploaded`, `contract.generated`)
-- `metadata` (jsonb)
-
-### RLS policy template (apply to every business table)
-
-At MVP, `workspace_id` lookups go through the workspace's `owner_id`. This policy already supports multi-user workspaces in v1.3 — when we add a `workspace_members` table, only the policy changes, not the schema.
+### RLS pattern (current — workspace_members-based)
 
 ```sql
-alter table <table> enable row level security;
-
-create policy "workspace_select" on <table>
-  for select using (
-    workspace_id in (select id from workspaces where owner_id = auth.uid())
-  );
-create policy "workspace_insert" on <table>
-  for insert with check (
-    workspace_id in (select id from workspaces where owner_id = auth.uid())
-  );
-create policy "workspace_update" on <table>
-  for update using (
-    workspace_id in (select id from workspaces where owner_id = auth.uid())
-  );
-create policy "workspace_delete" on <table>
-  for delete using (
-    workspace_id in (select id from workspaces where owner_id = auth.uid())
-  );
+create policy "ws_select" on <table>
+  for select using (workspace_id in (
+    select workspace_id from workspace_members where user_id = auth.uid()
+  ));
 ```
 
-`share_links` allows anonymous SELECT by token (the public viewer route validates server-side). `workspaces` itself uses `auth.uid() = owner_id` directly.
+**Special RLS cases:**
+- `signatures`: no `workspace_id` — RLS via `contracts` join: `exists (select 1 from contracts c join workspace_members wm on wm.workspace_id = c.workspace_id where c.id = signatures.contract_id and wm.user_id = auth.uid())`
+- `portal_messages`: workspace_members-based for architect reads/writes; public portal inserts use service client (bypasses RLS)
+- Public portal pages (`/portal/*`, `/share/*`): use `createServiceClient()` — explicitly bypass RLS
 
 ---
 
-## 7. AI contract generation — prompt engineering
+## 4. What to build next — roadmap
 
-The contract prompt lives in `src/lib/ai/prompts/contract.ts`. It is the single most important file for the differentiating feature. Update it as a versioned constant — never inline.
+### Phase A — Monetization (highest priority, nothing else ships until this is done)
 
-**System prompt skeleton:**
+**Billing & subscriptions**
+- Stripe integration: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+- CMI or PayDunya for Moroccan cards (alternative payment method)
+- Enforce `workspace.plan` limits: Solo (1 user, 10 projects, 5 GB, 20 AI calls/mo), Studio (3 users, unlimited projects, 50 GB, 100 AI calls), Agence (10 users, unlimited)
+- Upgrade/downgrade flow, billing portal, usage indicators in settings
+- 14-day free trial, no card upfront
+- Webhook: `invoice.paid` → activate, `subscription.deleted` → downgrade
+- Usage metering: AI calls per workspace per billing period, project count, storage bytes
 
-```
-Tu es un assistant juridique spécialisé dans la rédaction de contrats
-d'architecte au Maroc, conformes à la Loi 016-89 relative à l'exercice
-de la profession d'architecte et aux usages de l'Ordre National des
-Architectes.
+### Phase B — AI depth
 
-Tu rédiges en français professionnel et juridique. Tu n'inventes jamais
-de numéros d'articles de loi. Quand tu cites la Loi 016-89, fais-le
-uniquement dans son cadre général. Tu n'imites pas un avocat: ta sortie
-sera revue par un juriste.
+**WhatsApp bot** (highest-leverage Moroccan feature)
+- Meta Cloud API: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`
+- Architect forwards message/photo/PDF → Claude matches project → files + notes it
+- AI devis extraction: upload supplier PDF → extract `{description, quantity, unit, unitPriceCentimes}[]` → pre-populate devis builder
 
-Structure obligatoire du contrat:
-1. Préambule (parties, qualités)
-2. Objet du contrat
-3. Mission de l'architecte
-4. Honoraires (montant HT, TVA 20%, TTC)
-5. Modalités de paiement
-6. Délais
-7. Obligations de l'architecte
-8. Obligations du maître d'ouvrage
-9. Propriété intellectuelle
-10. Résiliation
-11. Litiges et juridiction compétente
-12. Signatures
+**Push notifications — activate**
+- `web-push` package not yet installed (`pnpm add web-push @types/web-push`)
+- Generate VAPID keys: `npx web-push generate-vapid-keys`
+- Add to `.env.local`: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`
+- Wire `sendPushNotification()` from `src/lib/push.ts` to: task due today, facture overdue, devis about to expire, new comment mention
 
-Format de sortie: JSON strict avec les clés:
-{ "title": string, "sections": [{ "heading": string, "body": string }] }
+### Phase C — Client portal depth (core portal is LIVE — remaining items below)
 
-Body utilise des paragraphes en texte brut, pas de markdown.
-```
+**E-signature improvements**
+- Embed signature as visual element in contract PDF export
+- Email notification to client when signature is complete
+- Audit trail page in architect view
 
-**User message:** structured JSON of the form fields.
+**Client-facing invoice payment**
+- Stripe/CMI payment link in portal invoice view
+- Auto-mark facture paid on webhook
 
-**Validation:** parse the AI response with zod. If it fails, retry once with an "your previous response was not valid JSON, return strict JSON" message. If it fails again, surface the error to the user — never display malformed content.
+**Project portal PDF downloads**
+- Add `/api/portal/[token]/devis/[id]/pdf` and `/api/portal/[token]/factures/[id]/pdf` routes
+- Currently only client portal (`/portal/client/[token]`) has these; project portal (`/portal/[token]`) does not
+
+### Phase D — Operations depth
+
+**DWG / IFC / RVT preview**
+- Autodesk Platform Services (APS): `APS_CLIENT_ID`, `APS_CLIENT_SECRET`
+- Server-side token exchange, pass-through to client
+- Premium plan feature
+
+**Plan annotation**
+- Fabric.js or Konva canvas layer over PDF plans
+- Rectangles, circles, lines, text labels, arrows
+- Save as separate annotation layer; export annotated PDF
+
+### Phase E — Mobile
+
+**Capacitor app**
+- Wrap PWA → App Store + Google Play
+- Native camera (site visits), biometric auth, haptic feedback
+
+**Email + SMS notifications**
+- `RESEND_API_KEY` for transactional email
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` for SMS
+
+### Phase F — Platform
+
+**Template marketplace**
+- Architects share/sell contract templates, devis templates, phase checklist presets
+- `templates` table, 70/30 revenue share
+
+**Lead routing**
+- `archidesk.ma/trouver-un-architecte` — clients post briefs, architects respond
+- Phase F only after 500+ active workspaces
 
 ---
 
-## 8. Coding conventions
+## 5. Tech stack
 
-- **TypeScript strict mode**, `noUncheckedIndexedAccess: true`
-- **Server Components by default.** Use `"use client"` only when interactivity, browser APIs, or hooks are required
-- **Server Actions** for mutations. API routes only when an external client (share link, AI) needs them
-- **Zod schema = source of truth** for forms; infer types from it; reuse the same schema client + server
-- **Database access only through `src/lib/db`** — no inline Supabase client calls in components
-- **Money is always integers in centimes.** Convert at the edge (input → DB, DB → display)
-- **Dates stored UTC, displayed in `Africa/Casablanca`**
-- **All user-facing strings through `next-intl`** — no hardcoded French in JSX. Use `t('clients.empty')` etc.
-- **Errors:** use `Result<T, E>` pattern from server actions, surface user-friendly French messages, log technical details server-side
-- **File naming:** `kebab-case` for files, `PascalCase` for components, `camelCase` for functions
-- **No `any`.** If you reach for it, stop and write the type
+| Layer | Choice | Notes |
+|---|---|---|
+| Framework | **Next.js 16** (currently v16.2.4) App Router | Server components, server actions |
+| Language | **TypeScript strict** | `noUncheckedIndexedAccess: true` |
+| Styling | **Tailwind CSS v4** + **shadcn/ui** | Blue primary `oklch(0.488 0.243 264.376)` |
+| Fonts | **Plus Jakarta Sans** (app LTR) + **Cairo** (Arabic/RTL) + **Fraunces** (in-app page titles) + **Geist / Geist Mono** (landing) | Variables `--font-jakarta`, `--font-cairo`, `--font-fraunces`, `--font-geist`, `--font-geist-mono` (all in `src/app/layout.tsx`) |
+| Forms | **react-hook-form** + **zod v4** | Zod = single source of truth |
+| DB / Auth / Storage | **Supabase** | RLS via workspace_members, mandatory |
+| AI | **Anthropic SDK** `@anthropic-ai/sdk`, model `claude-sonnet-4-6` | |
+| Rich text | **TipTap v3** | Contract editor |
+| PDF | **@react-pdf/renderer** server-side | All PDF templates |
+| i18n | **next-intl v4** | French + Arabic, locale from cookie |
+| Dates | **date-fns v4** `fr` locale | Africa/Casablanca timezone |
+| Billing | **Stripe** (international) + CMI/PayDunya | Phase A — NOT YET BUILT |
+| Email | **Resend** | Phase E — NOT YET BUILT |
+| SMS | **Twilio** | Phase E — NOT YET BUILT |
+| WhatsApp | **Meta Cloud API** | Phase B — NOT YET BUILT |
+| Push | **web-push** | Package NOT YET INSTALLED — run `pnpm add web-push @types/web-push` |
+| CAD preview | **Autodesk Platform Services** | Phase D — NOT YET BUILT |
+| Mobile | **Capacitor** | Phase E — NOT YET BUILT |
+| Deployment | **Vercel** | |
+| Package manager | **pnpm** | |
+
+---
+
+## 6. Directory structure
+
+```
+src/
+├── app/
+│   ├── (app)/                    # Authenticated app (auth guard in layout)
+│   │   ├── layout.tsx            # Sidebar + Header + PwaRegister + LanguageSwitcher
+│   │   ├── dashboard/            # Dashboard (stats, alerts, activity) — at /dashboard
+│   │   ├── bareme/               # ONA fee schedule reference
+│   │   ├── boq/                  # Bill of quantities
+│   │   ├── clients/              # Clients CRUD + detail (with Portail tab)
+│   │   ├── contracts/            # Contracts list + detail (TipTap editor)
+│   │   ├── devis/                # Quotes list + detail + edit
+│   │   ├── factures/             # Invoices list + detail + edit
+│   │   ├── fournisseurs/         # Supplier management
+│   │   ├── moodboards/           # Standalone moodboards
+│   │   ├── projects/             # Projects list (kanban+list), detail (9 tabs), files, notes, visites
+│   │   ├── prospects/            # Lead/prospect CRM
+│   │   ├── rapports/             # Financial reports + bank reconciliation
+│   │   ├── settings/             # Firm profile + portfolio + team members
+│   │   ├── subcontractors/       # Subcontractor CRM
+│   │   ├── tasks/                # Tasks list + calendar
+│   │   ├── templates/            # Contract/devis templates
+│   │   ├── time/                 # Time tracking
+│   │   └── workload/             # Team workload view
+│   ├── (auth)/                   # login, signup
+│   ├── api/
+│   │   ├── ai/digest/            # AI digest streaming
+│   │   ├── contracts/[id]/pdf/   # Authenticated contract PDF
+│   │   ├── devis/[id]/pdf/       # Authenticated devis PDF
+│   │   ├── factures/[id]/pdf/    # Authenticated facture PDF
+│   │   ├── portal/client/[token]/devis/[id]/pdf/    # Public client portal devis PDF
+│   │   ├── portal/client/[token]/factures/[id]/pdf/ # Public client portal facture PDF
+│   │   └── visites/summarize/    # AI site visit summary
+│   ├── invite/[token]/           # Team invite acceptance (public, no auth guard)
+│   ├── onboarding/               # Firm setup (redirects to /dashboard when done)
+│   ├── account-suspended/        # Suspended workspace page
+│   ├── p/[slug]/                 # Public portfolio pages (ISR-ready)
+│   ├── portal/
+│   │   ├── [token]/              # Project portal (service role, public)
+│   │   └── client/[token]/       # Client portal — all client data aggregated
+│   ├── share/[token]/            # File share viewer
+│   └── layout.tsx                # Root layout (Cairo+Jakarta+Fraunces fonts, dir RTL/LTR, next-intl)
+├── components/
+│   ├── comments/                 # CommentsSection (polymorphic)
+│   ├── contracts/                # ContractEditor, SignaturePad, SignaturePadPortal
+│   ├── layout/                   # Sidebar, Header, MobileNav, SearchModal, LanguageSwitcher, PushNotificationToggle
+│   ├── portal/
+│   │   ├── portal-actions.tsx    # Project portal client components (PortalDevisResponse, PortalMessageForm, etc.)
+│   │   └── client-portal-actions.tsx  # Client portal components (ClientPortalShare, ArchitectReplyForm, etc.)
+│   ├── projects/                 # PhaseChecklist, InspirationBoard, PermitTracker, AiSummaryButton, Kanban
+│   ├── rapports/                 # FinancialReports, BankReconciliation
+│   ├── settings/                 # SettingsForm, TeamMembers, PortfolioSettings
+│   └── [other modules]/          # clients, devis, factures, files, subcontractors, tasks, time, visites
+├── lib/
+│   ├── actions/                  # All server actions (one file per domain)
+│   ├── ai/                       # anthropic.ts (model constant), prompts/contract.ts
+│   ├── billing/                  # guards.ts (assertSeatAvailable, assertProjectAvailable, assertStorageAvailable), plans.ts
+│   ├── constants.ts              # PHASE_LABELS, PHASE_COLORS, PHASE_ORDER, PHASE_DELIVERABLES
+│   ├── format.ts                 # formatMAD, formatDate, formatRelative, formatFileSize
+│   ├── i18n/request.ts           # next-intl config — locale from cookie
+│   ├── push.ts                   # sendPushNotification() server utility
+│   ├── supabase/                 # client.ts, server.ts (createClient + createServiceClient), middleware.ts
+│   ├── validators/               # Zod schemas per entity
+│   └── workspace.ts              # getWorkspaceId() — reads workspace_members, shared by all actions
+└── messages/
+    ├── fr.json                   # French (complete)
+    └── ar.json                   # Arabic (complete)
+```
+
+---
+
+## 7. AI usage guide
+
+**Model:** always `claude-sonnet-4-6` (constant `AI_MODEL` in `src/lib/ai/anthropic.ts`). Use `claude-haiku-4-5` for background classification where speed matters.
+
+**Active AI features:**
+- Contract generation — `src/lib/ai/prompts/contract.ts` — versioned prompt, Moroccan law anchored
+- Site visit summary — `generateSiteSummaryAction` — observations → 300-word French summary
+- Project summary — `generateProjectSummaryAction` — project context → 150-200 word French briefing
+- Client email draft — `generateClientEmailAction` — context → professional French email
+- File classification — `classifyFileAction` — rule-based (no API call), fast and free
+- Meeting intelligence — AI summary + decisions from meeting notes
+
+**AI rules (never break):**
+- Never invent legal article numbers
+- Always show "Ce document est généré par IA" disclaimer on contracts
+- Store `ai_model` + `ai_prompt_version` on every AI-generated document
+- Cap AI costs: check plan limits before calling the API (Phase A billing required)
+
+---
+
+## 8. Design system
+
+**Style:** Swiss/minimalism — clean whitespace, no decorative elements.
+
+**Primary color:** `#2563EB` blue — unified across the app **and** the landing (in-app was `#2A45F0` before the 2026-06 cohesion repaint).
+
+**Background:** cool `#F7F8FA` body, `white` cards, `#E5E7EB` borders. The app uses a **cool slate/blue** neutral ramp — ink `#0B1220`, ink-2 `#1E293B`, muted `#475569`/`#64748B`. Realigned from the earlier warm-ivory palette in the 2026-06 repaint. Theme tokens live in `src/app/globals.css` (`:root`). **Don't reintroduce warm hexes** (`#16170E`, `#82806F`, `#E8E6DF`, `#F7F7F4`).
+
+**Sidebar:** White, 256px, grouped nav sections, blue active state with left border indicator, language switcher + push toggle + settings + logout at bottom.
+
+**Typography:** In-app — Plus Jakarta Sans (LTR), Cairo (Arabic), Fraunces (page titles via `.page-title` / `.section-title`). Landing — Geist + Geist Mono (scoped under `.adl`). Scale: 10/11/12/13/14/16/18/24/32.
+
+**Motion:** 150–300ms ease-out for entrances, no decorative animation.
+
+**Icons:** Lucide React only.
+
+**Cards:** `border-slate-100 bg-white`, `hover:shadow-md hover:-translate-y-0.5` on interactive cards.
+
+**RTL:** `dir="rtl"` on `<html>` for Arabic. Tailwind logical properties (`start-*`, `end-*`) for RTL-safe spacing. Toaster position flips to `top-left`.
+
+**Portal pages** (`/portal/*`): `bg-[#F7F6F3]`, max-w-3xl, sticky firm header + sticky section nav, card-based sections with `rounded-2xl border-gray-100 shadow-sm`.
+
+**Landing page** (`/` → `src/components/landing/landing-page.tsx`): a faithful React port of the Claude Design handoff — **Geist + Geist Mono**, blueprint motifs, `#2563EB`, an animated Gantt dashboard mockup + cycling AI insight feed. **All landing CSS is scoped under a `.adl` root** (a `<style>` block in the component) so it never collides with the app theme — keep it that way. Trilingual **FR (default) / EN** with a locale switcher; pricing tiers render from `PLAN_LIMITS`; all marketing copy is **grounded in real, shipped features** (no fabricated firms or unbuilt claims). Responsive (the heavy dashboard hides below 1024px).
+
+**Client-facing surfaces intentionally stay warm** and were excluded from the cool repaint: the client/project portals (`/portal/*`, `bg-[#F7F6F3]`) and the public portfolio (`/p/*`). Don't sweep them cool without a deliberate decision.
+
+---
+
+## 9. Coding conventions
+
+- **TypeScript strict**, `noUncheckedIndexedAccess: true` — no `any`, no `!` assertions without a comment
+- **Server Components by default.** `"use client"` only for interactivity, browser APIs, hooks
+- **Server Actions for all mutations.** API routes only for: webhooks, public share-link PDF export, AI streaming
+- **Zod schema = single source of truth** — infer types, reuse client + server
+- **Money = integers in centimes** — convert only at input edge and display edge (`formatMAD` in `src/lib/format.ts`)
+- **Dates UTC in DB, displayed `Africa/Casablanca`**
+- **All strings via next-intl** — no hardcoded French in JSX
+- **Result<T> pattern** from `src/types/index.ts` — all server actions return `{ ok: true, data }` or `{ ok: false, error: string }`
+- **`getWorkspaceId(supabase)`** from `src/lib/workspace.ts` — use in every action, never inline the query
+- **No inline Supabase calls in components** — mutations via `src/lib/actions/`, reads in server components
+- **File naming:** `kebab-case` files, `PascalCase` components, `camelCase` functions
 - **Commits:** Conventional Commits (`feat:`, `fix:`, `chore:`, `refactor:`)
 
----
+### Portal-specific conventions
 
-## 9. Roadmap beyond MVP (do not build now, but design for)
-
-**The MVP scope in section 2 is frozen.** Everything below is aspirational planning so design choices today don't paint us into a corner tomorrow.
-
-### v1.1 — Daily habit (target: 4-6 weeks after MVP launch)
-The features that turn ArchiDesk from "useful" into "open every morning."
-
-- **WhatsApp forward-to-project bot.** A dedicated WhatsApp number (Twilio or Meta Business API). Architects forward a client message, photo, or PDF — the bot uses AI to match it to a project and files it under the right folder, with the original message attached as a note. *This is the single highest-leverage feature for the Moroccan market because client communication lives on WhatsApp.*
-- **Site visit mode.** Mobile-first PWA flow: snap photos, dictate voice notes (transcribed in French/Arabic via Whisper API), tag to room/zone, generate a polished site report PDF. 2-3× per week per architect.
-- **Activity feed v2.** Real-time updates, filterable by project/client, with @-mentions ready (no team yet, but schema-ready).
-
-### v1.2 — Money (target: 6-10 weeks after v1.1)
-The features that justify *paying* for the product.
-
-- **Devis (quote) builder.** Line items, quantities, unit prices, automatic TVA 20%, professional PDF, accept/reject tracking. Required before almost every Moroccan project.
-- **Time tracking.** Timer + manual entries per project/phase. Optional — many architects bill fixed-fee, not hourly.
-- **Invoicing.** Sequential numbering (legally required in Morocco — never skip numbers), TVA 20%, MAD formatting, PDF, mark-paid status, payment-due reminders.
-- **Billing scaffold.** Stripe + (eventually) CMI for Moroccan card processing. Subscription plans wired to `workspace.plan`.
-
-### v1.3 — Trust & external eyes (target: 4-6 weeks after v1.2)
-What makes clients see the product and recommend it.
-
-- **Client portal.** Read-only project view via signed magic link — no client account required at first. Shows project status, files, contracts, invoices. Approve/reject deliverables with comments and audit trail.
-- **E-signature.** Built-in, simple. Send contract → client signs on their phone → archived with timestamp + IP. Avoids DocuSign per-doc fees.
-- **Email + SMS notifications.** Out-of-product reach.
-
-### v1.4 — The team and the second persona
-- **Multi-user workspaces.** `workspace_members` table, roles (`admin`, `architect`, `collaborator`, `accountant`). RLS already accommodates this from MVP — see section 6.
-- **Tasks & kanban** per project, assignments, mentions.
-- **Decorator mode.** Activated by `firm_profile.profile_type = 'decorator'`. Different default folders (Inspirations, Échantillons, Mobilier, Sources), mood boards as a first-class feature, decorator-flavored contract templates.
-- **Mood boards.** Pinterest-style boards inside a project. Web clipper (browser extension or paste URL), drag-rearrange, present to client. *Decorator killer feature.*
-- **Product / material library.** Per-workspace database of suppliers, products, finishes, prices, lead times. Pulls into mood boards, devis, shopping lists.
-
-### v1.5 — Localization
-- **Arabic UI** (RTL) + English. Schema and i18n infrastructure already in place from MVP.
-- **Multi-currency** for cross-border work.
-
-### v2.0 — Depth
-- **DWG / RVT / IFC inline preview** via Autodesk Platform Services (paid; pass-through fee on premium plans).
-- **Plan annotation.** Open a PDF or image plan, mark up, comment, send to contractor. Bluebeam-lite.
-- **Subcontractor / supplier CRM.** Plumbers, electricians, painters, suppliers — separate from clients. Ratings, project history, payment tracking.
-- **Permis de construire tracker.** Moroccan-specific admin checklists per project (PC, autorisations, conformity certificates) with deadlines and document checklist.
-- **Bank reconciliation.** Connect to CIH / Attijari / BMCE where APIs allow, auto-match incoming payments to invoices.
-- **AI everywhere (carefully).** Auto-categorize uploaded files, summarize a project before a client meeting, draft email replies in the user's tone, extract devis line items from supplier PDFs.
-
-### v2.1 — Mobile shells
-- Capacitor wrappers around the PWA → real iOS / Android apps in stores.
-
-### v3.0 — Platform / network effects
-- **Marketplace of templates.** Users share contract, devis, project templates.
-- **Public portfolio pages.** `archidesk.ma/anfa-architectes` — auto-generated SEO real estate.
-- **Lead routing.** Clients post a brief on archidesk.ma, get matched to architects/decorators by region. ArchiDesk becomes a two-sided marketplace, not just a tool.
-- **Ordre National des Architectes integration.** Verified-architect badge, official-tool credibility moat.
-
-### Door-opening rule
-
-When a v1.0 design decision could either help or hurt these later phases, **prefer the choice that keeps the door open** as long as it costs less than 30 minutes today. Examples already adopted: `workspace_id` on every table, `metadata jsonb` everywhere, `profile_type` on firm_profile, soft-delete via `archived_at`, scaffolded i18n. Do not invent new future-proofing features beyond these — the bar is "trivial today, expensive later."
+- **Project portal actions** (`/lib/actions/portal.ts`): `getValidProjectShareLink(token)` validates `resource_type='project'`; `getValidClientShareLink(token)` validates `resource_type='client'`
+- **Client portal revoke** = `update expires_at = now()` (keeps history), not delete
+- **Client-level messages**: insert `portal_messages` with `client_id`, `project_id=null`
+- **Architect replies to client portal**: require active share link (`is("expires_at", null)`) to find the token for `share_token` field
 
 ---
 
-## 10. Working with Claude Code — protocol
+## 10. Environment variables
 
-**At the start of every session:**
-1. Read this file
-2. Read `README.md` for setup notes
-3. Run `pnpm install` and `pnpm typecheck` before changes
-4. Check `git status` — never commit on top of uncommitted work without asking
-
-**When making changes:**
-- For each task, propose a plan first if it touches more than 3 files or any DB schema
-- Run `pnpm typecheck && pnpm lint` after every meaningful change
-- Update `README.md` when adding env vars, new commands, or external services
-- Update **this file** when scope, stack, or architecture changes — *the user must approve scope changes explicitly*
-
-**Definition of done for a feature:**
-- Typescript clean, lint clean
-- Manually testable from the UI (no "it works in the API")
-- French strings via `next-intl`, no hardcoded text
-- RLS verified (a second user cannot see the data)
-- Mobile layout checked at 375px width
-- Loading states + error states present
-- A short note in the changelog section of `README.md`
-
-**Never:**
-- Add a dependency without justifying it
-- Build something from section 3 (out of scope)
-- Bypass RLS with the service role key in user-facing code paths
-- Use the service role key client-side (it's server-only, period)
-- Commit `.env.local` or any secret
-
----
-
-## 11. Environment variables
-
-```
+```bash
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=     # server only, never exposed
+SUPABASE_SERVICE_ROLE_KEY=        # server only — createServiceClient()
 
 # Anthropic
 ANTHROPIC_API_KEY=
 
 # App
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Billing (Phase A — NOT YET SET UP)
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+
+# Push Notifications (generate: npx web-push generate-vapid-keys)
+# Also install: pnpm add web-push @types/web-push
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_EMAIL=mailto:admin@archidesk.ma
+
+# Email (Phase E)
+RESEND_API_KEY=
+
+# SMS (Phase E)
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_PHONE_NUMBER=
+
+# WhatsApp (Phase B)
+WHATSAPP_TOKEN=
+WHATSAPP_PHONE_NUMBER_ID=
+WHATSAPP_VERIFY_TOKEN=
+
+# CAD preview (Phase D)
+APS_CLIENT_ID=
+APS_CLIENT_SECRET=
 ```
 
-Document any new variable in `.env.local.example` the moment it's introduced.
+---
+
+## 11. Working with Claude Code
+
+**At the start of every session:**
+1. Read this file
+2. Run `pnpm typecheck && pnpm lint` — must be clean before any changes
+3. Check `git status` — never commit on top of uncommitted work
+
+**When making changes:**
+- For tasks touching > 3 files or DB schema: propose a plan first
+- Run `pnpm typecheck && pnpm lint` after every meaningful change
+- Update `.env.local.example` when adding env vars
+- Update this file when scope or architecture changes
+
+**Definition of done:**
+- `pnpm typecheck` → 0 errors
+- `pnpm lint` → 0 errors (pre-existing warnings acceptable)
+- Feature manually testable from the UI
+- Loading + error states present
+- Mobile layout works at 375px
+- RLS isolation verified (another workspace cannot see the data)
+
+**Known pre-existing lint warnings (ignore):**
+- `@typescript-eslint/no-unused-vars` on some Supabase query destructuring
+- `PC_STAGES` in permit-stages.ts assigned but only used as type
+
+**Critical architecture facts:**
+- Next.js 16 uses `src/proxy.ts` as the middleware entry point — **`src/middleware.ts` must NOT exist** (causes conflict)
+- Authenticated users on `/login` or `/signup` are redirected to `/dashboard` (not `/onboarding`)
+- The dashboard is at `/dashboard` — there is no `src/app/(app)/page.tsx`
+- `createServiceClient()` is ONLY for: public portal routes, admin panel, service-level ops where RLS must be bypassed. Never use it in authenticated user-facing pages where regular RLS works.
+- `signatures` table has no `workspace_id` — its RLS policy joins through `contracts`. Use `createClient()` (not service client) for reading signatures in the authenticated app.
+
+**Never:**
+- Use the Supabase service role key in client-side or user-facing server code (`createServiceClient()` is server-only — used for admin API and public portal pages that bypass RLS)
+- Hard-code French strings in JSX (use next-intl)
+- Store money as floats
+- Call the Anthropic API without checking plan limits first (Phase A)
+- Bypass RLS in authenticated app routes
+- Create `src/middleware.ts` — it conflicts with `src/proxy.ts` in Next.js 16
 
 ---
 
-## 12. First-session task list (suggested order)
+## 12. Competitive intelligence
 
-When the user starts a fresh session with Claude Code, build in this order:
-
-1. Scaffold Next.js 15 + TS + Tailwind + shadcn/ui + pnpm
-2. Wire Supabase: client/server helpers, middleware, login/signup pages. **On signup, auto-create a `workspace` row with `owner_id = user.id`** and an empty `firm_profile` linked to it.
-3. Drizzle schema + first migration: `workspaces`, `firm_profile`, `clients`, `projects` (with `workspace_id` and `metadata jsonb` per section 6)
-4. Settings page (firm profile CRUD)
-5. Clients CRUD (list, create, edit, single page)
-6. Projects CRUD (list, create, edit, single page with tabs scaffolded)
-7. Files: Supabase Storage setup, upload, list, preview (PDF + images), versioning
-8. Share links: generate, public viewer route, expiry
-9. Contracts: schema, form, AI integration, TipTap editor, PDF export
-10. Dashboard home: recent activity feed
-11. PWA: manifest, service worker, install prompt
-12. Polish: empty states, loading skeletons, error boundaries, mobile QA
-
-Each item is a meaningful chunk — typically a 1-3 hour Claude Code session. Do not skip ahead; later items depend on earlier ones.
+| Competitor | Price | Gap ArchiDesk fills |
+|---|---|---|
+| Monograph (US) | $49/user/mo | English-only, no MAD, no Moroccan law, no WhatsApp |
+| Archisnapper (BE) | €39/user/mo | Site visits only, no contracts/devis/invoicing |
+| BQE Core (US) | $29+/user/mo | Enterprise-focused, complex, no Morocco/Maghreb |
+| Notion / Asana | $10–20/user/mo | Generic, no industry workflow, no AI contracts |
+| Local Excel/Word | Free | No AI, no client portal, no PDF, no search |
 
 ---
 
-## 13. Long-term vision & SaaS positioning
+## 13. Revenue milestones
 
-This section is **strategic context, not implementation guidance**. It explains *why* the roadmap is shaped the way it is and *who* we're competing with. Do not build anything from this section directly — it informs design taste, not features.
-
-### Who this is for, eventually
-
-A Moroccan design professional running a practice of 1-10 people. Architect, decorator, interior designer, or hybrid studio. They:
-
-- Manage 5-50 active projects, each lasting 3 months to 3 years
-- Bill in MAD (occasionally EUR for expat clients) — fees are a percentage of construction cost or fixed lump sums
-- Communicate primarily via WhatsApp, then email, rarely phone
-- Use AutoCAD / Revit / SketchUp / Photoshop for production work
-- Hate admin: contracts, devis, invoicing, permit tracking, supplier coordination
-- Have no IT support and no patience for software that needs configuration
-
-ArchiDesk wins by replacing a stack of 6+ tools (WhatsApp + Gmail + Excel + Word + Dropbox + paper) with one place.
-
-### The four feature tiers (priority-ranked by frequency × differentiation)
-
-**Tier 1 — daily habit (target for v1.1):**
-WhatsApp forward-to-project, site visit mode, smart "Aujourd'hui" inbox, mood boards (decorators).
-
-**Tier 2 — weekly stickiness (target for v1.2-v1.3):**
-Devis builder, invoicing, client portal, e-signature, communication log per project, supplier CRM.
-
-**Tier 3 — depth & defensibility (v2.0):**
-DWG/IFC preview, plan annotation, permis tracker, bank reconciliation, AI-assisted file categorization and email drafting, AI extraction of supplier quotes into devis line items.
-
-**Tier 4 — network effects (v3.0):**
-Template marketplace, public portfolios, lead routing, Ordre National des Architectes partnership.
-
-### Pricing model (target, subject to validation)
-
-Three tiers, MAD/month, billed monthly or yearly (-20% yearly):
-
-| Plan | Price | For | Limits |
-|---|---|---|---|
-| **Solo** | 199 MAD | Solo architect/decorator | 1 user, 10 active projects, 5 GB storage, 20 AI contracts/mo |
-| **Studio** | 499 MAD | Small practice | 3 users, unlimited projects, 50 GB, 100 AI contracts, client portal, WhatsApp bot |
-| **Agence** | 999 MAD | Established agency | 10 users, unlimited everything, marketplace listing, priority support |
-
-14-day free trial, no card upfront. Schema and `workspace.plan` are scaffolded for this from MVP, but **billing enforcement is not built until v1.2**.
-
-### Competitive landscape
-
-We compete with:
-- **Generic project tools** (Notion, Trello, Asana) — too generic, no contracts/devis/Moroccan specifics, no industry workflow
-- **Vertical SaaS from Europe/US** (Monograph, Archisnapper, BQE Core) — expensive (often >$50/user/month), English-only, no MAD, no Moroccan legal/tax context
-- **Local generic tools** (Sage, custom Excel) — no AI, no client portal, ugly, hard to use on mobile
-
-Our defensible edge: **AI contracts grounded in Moroccan law** + **WhatsApp-native workflow** + **MAD/TVA/ICE/RC handled correctly** + **bilingual French/Arabic future**. None of those, individually, is hard. Together, in one polished product, it's a real moat for the Moroccan/Maghreb market.
-
-### Vision in one sentence
-
-**The default operating system for Moroccan design practices, the way Notion is for knowledge workers and Linear is for software teams.**
+| Milestone | Target | Key features required |
+|---|---|---|
+| First 10 paying users | Month 1–2 | Core app (current) + billing |
+| 100 paying workspaces | Month 4–6 | Billing + client portal e-signature + push notifications |
+| 500 paying workspaces | Month 9–12 | Multi-user + WhatsApp + mobile app |
+| 2,500 workspaces (~$1M ARR) | Month 18–24 | Full platform + Arabic + marketplace |
 
 ---
 
-*Last updated: vision & decorator-readiness pass. Update this file when scope changes, never let it drift.*
+*Last updated: 2026-06-01 — **Landing page fully rebuilt** (faithful Claude Design port in `src/components/landing/landing-page.tsx`: Geist + Geist Mono, blueprint motifs, animated Gantt mockup + AI feed, trilingual FR/EN, pricing from `PLAN_LIMITS`, all copy grounded in real features; CSS scoped under `.adl`). **In-app cohesion repaint** warm-ivory → cool slate/blue, accent unified to `#2563EB`; client portal + public portfolio deliberately kept warm. Added **Geist/Geist Mono** fonts. **AI subsystem hardening**: safe message-text extraction (`messageText`), try/catch on `/api/ai/*` routes, meeting-JSON `safeParse` + retry. **UX fixes**: dashboard greeting uses architect/firm name (not email prefix); devis + facture line-items reflow on mobile; dashboard stat chips moved to next-intl ICU plurals (fr/en/ar). **Note:** billing is on **LemonSqueezy** (checkout + webhook live), not Stripe — §4 (roadmap Phase A) and §5 (tech-stack Billing row) still say Stripe and are out of date. Next priority: confirm billing env/go-live readiness.*
+
+*Update 2026-06-02 — **Legal pages completed**: full set of 5 public routes (`/mentions-legales`, `/terms` CGU, `/cgv`, `/privacy`, `/cookies`) sharing `src/components/legal/legal-shell.tsx`, all driven by a single source of truth `src/lib/legal.ts` (fill its `TODO(...)` éditeur fields to "finalize" → `isLegalEntityConfigured()` then hides the completeness notice on every page; CGV pricing renders from `PLAN_LIMITS`). Dropped the orange "brouillon" banner per founder decision (lawyer-review caveat kept as a code comment — still needs a juriste). Added a **required consent checkbox** to signup (auth i18n `acceptTerms`/`acceptRequired`, fr/en/ar) + legal links in landing footer (FR/EN) and settings. **Fixed:** legal routes are now in the `isLegalPage` allowlist in `src/lib/supabase/middleware.ts` — previously the auth middleware bounced logged-out visitors to `/login`, silently breaking even the pre-existing `/terms` footer links. Legal page bodies are FR-only (jurisdiction language) by design.*

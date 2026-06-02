@@ -419,7 +419,7 @@ export function FileManager({ projectId, filesByFolder, allFiles, defaultFolders
 
 function ApprovalBadge({ status }: { status: "not_required" | "pending" | "approved" | "rejected" }) {
   const config = {
-    not_required: { label: "Sans approbation", className: "bg-[#F2F2EE] text-[#82806F]" },
+    not_required: { label: "Sans approbation", className: "bg-[#F1F5F9] text-[#64748B]" },
     pending: { label: "À approuver", className: "bg-amber-50 text-amber-700" },
     approved: { label: "Approuvé", className: "bg-[#E5F3EB] text-[#2F8F5C]" },
     rejected: { label: "Corrections", className: "bg-[#FCEFE6] text-[#C75B2E]" },

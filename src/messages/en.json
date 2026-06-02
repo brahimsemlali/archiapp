@@ -35,6 +35,11 @@
     "recentActivity": "Recent Activity",
     "noActivity": "No recent activity.",
     "greeting": "Hello, {name}.",
+    "headerStats": {
+      "clients": "{count, plural, =0 {# clients} one {# client} other {# clients}}",
+      "tasksDueSoon": "{count, plural, =0 {# tasks due soon} one {# task due soon} other {# tasks due soon}}",
+      "draftContracts": "{count, plural, =0 {# draft contracts} one {# draft contract} other {# draft contracts}}"
+    },
     "setupBanner": {
       "title": "Getting started",
       "description": "Complete your firm profile to generate your first professional client package and verify your PDFs.",
@@ -423,7 +428,9 @@
     "sectionData": "Data & privacy",
     "dataDescription": "Download a full copy of all your workspace data as JSON. See our legal pages for more on how your data is used.",
     "exportJson": "Export my data (JSON)",
+    "linkLegal": "Legal notice",
     "linkTerms": "Terms of service",
+    "linkCgv": "Sales terms",
     "linkPrivacy": "Privacy policy",
     "linkCookies": "Cookie policy"
   },
@@ -554,7 +561,9 @@
     "hasAccount": "Already have an account?",
     "loginWithGoogle": "Continue with Google",
     "loginError": "Incorrect email or password.",
-    "signupError": "Error creating account."
+    "signupError": "Error creating account.",
+    "acceptTerms": "I accept the <terms>Terms of Service</terms> and <privacy>Privacy Policy</privacy>.",
+    "acceptRequired": "You must accept the terms to continue."
   },
   "common": {
     "loading": "Loading...",
@@ -685,6 +694,13 @@
     "signature_portal_created": "Contract signed via portal",
     "site_issue_created": "Site issue created",
     "boq_item_created": "BOQ item added",
-    "settings_firm_profile_updated": "Firm profile updated"
+    "settings_firm_profile_updated": "Firm profile updated",
+    "superadmin_workspace_updated": "Workspace updated by superadmin",
+    "superadmin_owner_banned": "Owner login blocked by superadmin",
+    "superadmin_owner_unbanned": "Owner login restored by superadmin",
+    "superadmin_user_banned": "User blocked by superadmin",
+    "superadmin_user_unbanned": "User restored by superadmin",
+    "billing_lemonsqueezy_webhook": "Subscription synced",
+    "activation_demo_workspace_created": "Demo data installed"
   }
 }

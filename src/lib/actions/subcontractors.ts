@@ -18,7 +18,36 @@ export interface SubcontractorInput {
   notes?: string;
 }
 
-export async function createSubcontractorAction(input: SubcontractorInput): Promise<Result<{ id: string }>> {
+export interface SubcontractorRow {
+  id: string;
+  name: string;
+  trade: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  cnss: string | null;
+  rib: string | null;
+  rating: number | null;
+  notes: string | null;
+}
+
+function normalizeInput(input: SubcontractorInput | Partial<SubcontractorInput>) {
+  return {
+    ...(input.name !== undefined && { name: input.name.trim() }),
+    ...(input.trade !== undefined && { trade: input.trade?.trim() || null }),
+    ...(input.phone !== undefined && { phone: input.phone?.trim() || null }),
+    ...(input.email !== undefined && { email: input.email?.trim() || null }),
+    ...(input.address !== undefined && { address: input.address?.trim() || null }),
+    ...(input.cnss !== undefined && { cnss: input.cnss?.trim() || null }),
+    ...(input.rib !== undefined && { rib: input.rib?.trim() || null }),
+    ...(input.rating !== undefined && { rating: input.rating ?? null }),
+    ...(input.notes !== undefined && { notes: input.notes?.trim() || null }),
+  };
+}
+
+const subcontractorSelect = "id, name, trade, phone, email, address, cnss, rib, rating, notes";
+
+export async function createSubcontractorAction(input: SubcontractorInput): Promise<Result<SubcontractorRow>> {
   const supabase = await createClient();
   const context = await requireWorkspaceRole(supabase);
   if (!context.ok) return { ok: false, error: context.error };
@@ -27,8 +56,8 @@ export async function createSubcontractorAction(input: SubcontractorInput): Prom
 
   const { data, error } = await supabase
     .from("subcontractors")
-    .insert({ workspace_id: workspaceId, ...input })
-    .select("id")
+    .insert({ workspace_id: workspaceId, ...normalizeInput(input) })
+    .select(subcontractorSelect)
     .single();
 
   if (error) return { ok: false, error: dbError(error) };
@@ -36,21 +65,24 @@ export async function createSubcontractorAction(input: SubcontractorInput): Prom
   return { ok: true, data };
 }
 
-export async function updateSubcontractorAction(id: string, input: Partial<SubcontractorInput>): Promise<Result<void>> {
+export async function updateSubcontractorAction(id: string, input: Partial<SubcontractorInput>): Promise<Result<SubcontractorRow>> {
   const supabase = await createClient();
   const context = await requireWorkspaceRole(supabase);
   if (!context.ok) return { ok: false, error: context.error };
   const { workspaceId } = context.data;
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("subcontractors")
-    .update({ ...input, updated_at: new Date().toISOString() })
+    .update({ ...normalizeInput(input), updated_at: new Date().toISOString() })
     .eq("id", id)
-    .eq("workspace_id", workspaceId);
+    .eq("workspace_id", workspaceId)
+    .select(subcontractorSelect)
+    .maybeSingle();
 
   if (error) return { ok: false, error: dbError(error) };
+  if (!data) return { ok: false, error: "Sous-traitant introuvable." };
   revalidatePath("/subcontractors");
-  return { ok: true, data: undefined };
+  return { ok: true, data };
 }
 
 export async function deleteSubcontractorAction(id: string): Promise<Result<void>> {

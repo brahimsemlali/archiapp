@@ -10,6 +10,8 @@ import { Loader2, Upload, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { updateFirmProfileAction, type FirmProfileValues } from "@/lib/actions/settings";
 import { uploadLogoAction } from "@/lib/actions/logo";
+import { IMAGE_UPLOAD_ACCEPT, isAllowedImageFile } from "@/lib/upload-rules";
+import { useTranslations } from "next-intl";
 
 interface SettingsFormProps {
   profile: {
@@ -33,6 +35,7 @@ export function SettingsForm({ profile }: SettingsFormProps) {
   const [logoUrl, setLogoUrl] = useState(profile?.logo_url ?? "");
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const t = useTranslations("settingsForm");
 
   const { register, handleSubmit } = useForm<FirmProfileValues>({
     defaultValues: {
@@ -55,27 +58,31 @@ export function SettingsForm({ profile }: SettingsFormProps) {
     const result = await updateFirmProfileAction(values);
     setLoading(false);
     if (!result.ok) { toast.error(result.error); return; }
-    toast.success("Paramètres enregistrés.");
+    toast.success(t("saved"));
   }
 
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const input = e.currentTarget;
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!isAllowedImageFile(file)) { toast.error(t("logoError")); input.value = ""; return; }
+    if (file.size > 2 * 1024 * 1024) { toast.error(t("logoSizeError")); input.value = ""; return; }
     setUploadingLogo(true);
     const fd = new FormData();
     fd.append("logo", file);
     const result = await uploadLogoAction(fd);
     setUploadingLogo(false);
+    input.value = "";
     if (!result.ok) { toast.error(result.error); return; }
     setLogoUrl(result.data);
-    toast.success("Logo mis à jour.");
+    toast.success(t("logoUpdated"));
   }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       {/* Logo */}
       <div>
-        <h3 className="text-sm font-medium mb-3">Logo du cabinet</h3>
+        <h3 className="text-sm font-medium mb-3">{t("logoSection")}</h3>
         <div className="flex items-center gap-4">
           <div className="h-16 w-16 rounded-lg border bg-gray-50 flex items-center justify-center overflow-hidden shrink-0">
             {logoUrl ? (
@@ -96,14 +103,14 @@ export function SettingsForm({ profile }: SettingsFormProps) {
               {uploadingLogo
                 ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 : <Upload className="mr-2 h-4 w-4" />}
-              {logoUrl ? "Changer le logo" : "Téléverser un logo"}
+              {logoUrl ? t("changeLogo") : t("uploadLogo")}
             </Button>
-            <p className="text-xs text-muted-foreground mt-1">PNG, JPG, SVG — max 2 Mo</p>
+            <p className="text-xs text-muted-foreground mt-1">{t("logoHint")}</p>
           </div>
           <input
             ref={logoInputRef}
             type="file"
-            accept="image/*"
+            accept={IMAGE_UPLOAD_ACCEPT}
             className="hidden"
             onChange={handleLogoUpload}
           />
@@ -113,26 +120,26 @@ export function SettingsForm({ profile }: SettingsFormProps) {
       <Separator />
 
       <div>
-        <h3 className="text-sm font-medium mb-3">Identité du cabinet</h3>
+        <h3 className="text-sm font-medium mb-3">{t("identitySection")}</h3>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label htmlFor="firmName">Nom du cabinet</Label>
+            <Label htmlFor="firmName">{t("firmName")}</Label>
             <Input id="firmName" {...register("firmName")} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="architectName">Nom de l'architecte</Label>
+            <Label htmlFor="architectName">{t("architectName")}</Label>
             <Input id="architectName" {...register("architectName")} />
           </div>
           <div className="sm:col-span-2 space-y-2">
-            <Label htmlFor="address">Adresse</Label>
+            <Label htmlFor="address">{t("address")}</Label>
             <Input id="address" {...register("address")} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="phone">Téléphone</Label>
+            <Label htmlFor="phone">{t("phone")}</Label>
             <Input id="phone" {...register("phone")} type="tel" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{t("email")}</Label>
             <Input id="email" {...register("email")} type="email" />
           </div>
         </div>
@@ -141,7 +148,7 @@ export function SettingsForm({ profile }: SettingsFormProps) {
       <Separator />
 
       <div>
-        <h3 className="text-sm font-medium mb-3">Informations légales</h3>
+        <h3 className="text-sm font-medium mb-3">{t("legalSection")}</h3>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="ice">ICE</Label>
@@ -172,7 +179,7 @@ export function SettingsForm({ profile }: SettingsFormProps) {
 
       <Button type="submit" disabled={loading}>
         {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-        Enregistrer
+        {t("save")}
       </Button>
     </form>
   );

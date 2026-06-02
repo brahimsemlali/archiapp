@@ -10,6 +10,7 @@ import { buildSafeStorageFilename, validateDocumentUpload } from "@/lib/storage/
 import { sendEmail } from "@/lib/email/send";
 import { portalMessageEmail, architectReplyEmail, APP_URL } from "@/lib/email/templates";
 import { notifyWorkspace } from "@/lib/push";
+import { assertRateLimit } from "@/lib/security/rate-limit";
 import { dbError } from "@/lib/db-error";
 
 const STORAGE_BUCKET = "project-files";
@@ -20,6 +21,7 @@ const MAX_PORTAL_NOTE_LENGTH = 500;
 type ProjectShareLink = {
   workspace_id: string;
   resource_id: string;
+  token: string;
 };
 
 async function getValidProjectShareLink(token: string) {
@@ -44,27 +46,18 @@ async function getValidProjectShareLink(token: string) {
 }
 
 async function assertPortalRateLimit(
-  supabase: Awaited<ReturnType<typeof createServiceClient>>,
+  _supabase: Awaited<ReturnType<typeof createServiceClient>>,
   shareLink: ProjectShareLink,
   action: string,
   maxActions: number,
   windowSeconds: number
 ): Promise<Result<void>> {
-  const since = new Date(Date.now() - windowSeconds * 1000).toISOString();
-  const { count, error } = await supabase
-    .from("activity_log")
-    .select("id", { count: "exact", head: true })
-    .eq("workspace_id", shareLink.workspace_id)
-    .eq("project_id", shareLink.resource_id)
-    .eq("action", action)
-    .gte("created_at", since);
-
-  if (error) return { ok: false, error: dbError(error) };
-  if ((count ?? 0) >= maxActions) {
-    return { ok: false, error: "Trop de tentatives. Réessayez dans quelques minutes." };
-  }
-
-  return { ok: true, data: undefined };
+  return assertRateLimit({
+    action,
+    key: `${shareLink.workspace_id}:${shareLink.token}`,
+    limit: maxActions,
+    windowSeconds,
+  });
 }
 
 export async function createProjectPortalLinkAction(
@@ -680,6 +673,12 @@ export async function respondPortalFileApprovalAction(
     metadata: { share_token: token, fileId, filename: file.filename, status },
   });
 
+  await notifyWorkspace(supabase, shareLink.workspace_id, {
+    title: status === "approved" ? "Fichier approuvé" : "Fichier refusé",
+    body: file.filename,
+    href: `/projects/${shareLink.resource_id}`,
+  });
+
   revalidatePath(`/portal/${token}`);
   return { ok: true, data: undefined };
 }
@@ -744,6 +743,12 @@ export async function respondClientPortalFileApprovalAction(
     client_id: shareLink.resource_id,
     action: "file.portal_approval_attempt",
     metadata: { share_token: token, fileId, filename: file.filename, status },
+  });
+
+  await notifyWorkspace(supabase, shareLink.workspace_id, {
+    title: status === "approved" ? "Fichier approuvé" : "Fichier refusé",
+    body: file.filename,
+    href: `/clients/${shareLink.resource_id}`,
   });
 
   revalidatePath(`/portal/client/${token}`);

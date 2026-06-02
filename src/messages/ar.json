@@ -34,6 +34,11 @@
     "recentActivity": "النشاط الأخير",
     "noActivity": "لا يوجد نشاط حديث.",
     "greeting": "مرحباً، {name}.",
+    "headerStats": {
+      "clients": "{count, plural, zero {لا عملاء} one {عميل واحد} two {عميلان} few {# عملاء} many {# عميلاً} other {# عميل}}",
+      "tasksDueSoon": "{count, plural, zero {لا مهام قريبة} one {مهمة قريبة} two {مهمتان قريبتان} few {# مهام قريبة} many {# مهمة قريبة} other {# مهمة قريبة}}",
+      "draftContracts": "{count, plural, zero {لا عقود مسودة} one {عقد مسودة} two {عقدان مسودة} few {# عقود مسودة} many {# عقداً مسودة} other {# عقد مسودة}}"
+    },
     "eyebrow": "نظرة عامة",
     "setupBanner": {
       "title": "البدء",
@@ -422,7 +427,9 @@
     "sectionData": "البيانات والخصوصية",
     "dataDescription": "صدّر جميع بياناتك بتنسيق JSON. راجع صفحاتنا القانونية لمعرفة المزيد حول استخدام بياناتك.",
     "exportJson": "تصدير بياناتي (JSON)",
+    "linkLegal": "الإشعارات القانونية",
     "linkTerms": "شروط الاستخدام",
+    "linkCgv": "شروط البيع",
     "linkPrivacy": "الخصوصية",
     "linkCookies": "ملفات تعريف الارتباط"
   },
@@ -553,7 +560,9 @@
     "hasAccount": "لديك حساب بالفعل؟",
     "loginWithGoogle": "المتابعة بحساب Google",
     "loginError": "البريد الإلكتروني أو كلمة المرور غير صحيحة.",
-    "signupError": "خطأ أثناء إنشاء الحساب."
+    "signupError": "خطأ أثناء إنشاء الحساب.",
+    "acceptTerms": "أوافق على <terms>الشروط العامة</terms> و<privacy>سياسة الخصوصية</privacy>.",
+    "acceptRequired": "يجب الموافقة على الشروط للمتابعة."
   },
   "common": {
     "loading": "جارٍ التحميل...",
@@ -684,6 +693,13 @@
     "signature_portal_created": "تم توقيع العقد عبر البوابة",
     "site_issue_created": "تم إنشاء ملاحظة الورشة",
     "boq_item_created": "تم إضافة بند BOQ",
-    "settings_firm_profile_updated": "تم تحديث ملف المكتب"
+    "settings_firm_profile_updated": "تم تحديث ملف المكتب",
+    "superadmin_workspace_updated": "تم تحديث مساحة العمل بواسطة المشرف العام",
+    "superadmin_owner_banned": "تم حظر دخول المالك بواسطة المشرف العام",
+    "superadmin_owner_unbanned": "تمت إعادة تفعيل دخول المالك بواسطة المشرف العام",
+    "superadmin_user_banned": "تم حظر المستخدم بواسطة المشرف العام",
+    "superadmin_user_unbanned": "تمت إعادة تفعيل المستخدم بواسطة المشرف العام",
+    "billing_lemonsqueezy_webhook": "تمت مزامنة الاشتراك",
+    "activation_demo_workspace_created": "تم تثبيت بيانات تجريبية"
   }
 }

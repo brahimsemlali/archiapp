@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { VisiteForm } from "@/components/visites/visite-form";
+import { getWorkspaceId } from "@/lib/workspace";
+import { getPlanLimits } from "@/lib/billing/plans";
 
 export default async function NewVisitePage({
   params,
@@ -11,14 +13,22 @@ export default async function NewVisitePage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const workspaceId = await getWorkspaceId(supabase, user?.id);
+  if (!workspaceId) notFound();
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id, title")
-    .eq("id", id)
-    .single();
+  const [{ data: project }, { data: workspace }] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, title")
+      .eq("id", id)
+      .eq("workspace_id", workspaceId)
+      .single(),
+    supabase.from("workspaces").select("plan").eq("id", workspaceId).single(),
+  ]);
 
   if (!project) notFound();
+  const aiEnabled = getPlanLimits(workspace?.plan).aiEnabled;
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -31,7 +41,7 @@ export default async function NewVisitePage({
           <p className="text-sm text-muted-foreground mt-0.5">{project.title}</p>
         </div>
       </div>
-      <VisiteForm projectId={id} projectTitle={project.title} />
+      <VisiteForm projectId={id} projectTitle={project.title} aiEnabled={aiEnabled} />
     </div>
   );
 }

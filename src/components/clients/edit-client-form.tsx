@@ -7,6 +7,7 @@ import { updateClientAction, archiveClientAction } from "@/lib/actions/clients";
 import type { ClientFormValues } from "@/lib/validators/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Loader2, Archive } from "lucide-react";
 
 interface EditClientFormProps {
@@ -26,6 +27,7 @@ interface EditClientFormProps {
 export function EditClientForm({ client }: EditClientFormProps) {
   const [loading, setLoading] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const router = useRouter();
 
   async function handleSubmit(values: ClientFormValues) {
@@ -43,7 +45,6 @@ export function EditClientForm({ client }: EditClientFormProps) {
   }
 
   async function handleArchive() {
-    if (!confirm("Archiver ce client ? Il ne sera plus visible dans la liste active.")) return;
     setArchiving(true);
     const result = await archiveClientAction(client.id);
     setArchiving(false);
@@ -78,7 +79,7 @@ export function EditClientForm({ client }: EditClientFormProps) {
           type="button"
           variant="outline"
           className="text-destructive border-destructive/30 hover:bg-destructive/5"
-          onClick={handleArchive}
+          onClick={() => setConfirmArchive(true)}
           disabled={archiving}
         >
           {archiving ? (
@@ -89,6 +90,15 @@ export function EditClientForm({ client }: EditClientFormProps) {
           Archiver ce client
         </Button>
       </div>
+      <ConfirmDialog
+        open={confirmArchive}
+        onOpenChange={setConfirmArchive}
+        title="Archiver ce client ?"
+        description="Il ne sera plus visible dans la liste active."
+        confirmLabel="Archiver"
+        variant="default"
+        onConfirm={handleArchive}
+      />
     </div>
   );
 }

@@ -11,8 +11,13 @@ import Link from "next/link";
 import type { WorkspacePlan } from "@/lib/billing/plans";
 import { getTranslations } from "next-intl/server";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ billingError?: string; checkout?: string; tab?: string }>;
+}) {
   const t = await getTranslations("settingsPage");
+  const params = await searchParams;
   const supabase = await createClient();
   const serviceClient = await createServiceClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -26,7 +31,11 @@ export default async function SettingsPage() {
       ? supabase.from("firm_profile").select("*").eq("workspace_id", workspaceId).single()
       : Promise.resolve({ data: null }),
     workspaceId
-      ? supabase.from("workspaces").select("id, name, owner_id, plan").eq("id", workspaceId).single()
+      ? supabase
+          .from("workspaces")
+          .select("id, name, owner_id, plan, subscription_status, subscription_source, current_period_end, trial_ends_at")
+          .eq("id", workspaceId)
+          .single()
       : Promise.resolve({ data: null }),
     workspaceId
       ? serviceClient.rpc("get_workspace_members_with_email", { p_workspace_id: workspaceId })
@@ -84,21 +93,28 @@ export default async function SettingsPage() {
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="pt-1">
         <p className="eyebrow mb-1">{t("eyebrow")}</p>
-        <h1 className="page-title text-[28px] text-[#16170E]">{t("title")}</h1>
-        <p className="text-[13.5px] text-[#82806F] mt-1">{t("subtitle")}</p>
+        <h1 className="page-title text-[28px] text-[#0B1220]">{t("title")}</h1>
+        <p className="text-[13.5px] text-[#64748B] mt-1">{t("subtitle")}</p>
       </div>
 
-      <div className="bg-white border border-[#E8E6DF] rounded-xl p-6">
+      <div className="bg-white border border-[#E5E7EB] rounded-xl p-6">
         <SettingsForm profile={profileResult.data} />
       </div>
 
-      <div className="bg-white border border-[#E8E6DF] rounded-xl p-6">
+      <div className="bg-white border border-[#E5E7EB] rounded-xl p-6">
         <div className="flex items-center gap-2 mb-5">
-          <BadgeDollarSign className="h-4 w-4 text-[#82806F]" />
-          <h2 className="section-title text-[15px] text-[#16170E]">{t("sectionPlan")}</h2>
+          <BadgeDollarSign className="h-4 w-4 text-[#64748B]" />
+          <h2 className="section-title text-[15px] text-[#0B1220]">{t("sectionPlan")}</h2>
         </div>
         <PlanUsage
           plan={plan}
+          billingError={params.billingError ?? null}
+          subscription={{
+            status: workspaceResult.data?.subscription_status ?? null,
+            source: workspaceResult.data?.subscription_source ?? null,
+            currentPeriodEnd: workspaceResult.data?.current_period_end ?? null,
+            trialEndsAt: workspaceResult.data?.trial_ends_at ?? null,
+          }}
           usage={{
             seats: membersWithUsers.length,
             projects: projectsCountResult.count ?? 0,
@@ -108,10 +124,10 @@ export default async function SettingsPage() {
         />
       </div>
 
-      <div className="bg-white border border-[#E8E6DF] rounded-xl p-6">
+      <div className="bg-white border border-[#E5E7EB] rounded-xl p-6">
         <div className="flex items-center gap-2 mb-5">
-          <Globe className="h-4 w-4 text-[#82806F]" />
-          <h2 className="section-title text-[15px] text-[#16170E]">{t("sectionPortfolio")}</h2>
+          <Globe className="h-4 w-4 text-[#64748B]" />
+          <h2 className="section-title text-[15px] text-[#0B1220]">{t("sectionPortfolio")}</h2>
         </div>
         <PortfolioSettings
           currentSlug={profileResult.data?.slug ?? null}
@@ -122,23 +138,23 @@ export default async function SettingsPage() {
         />
       </div>
 
-      <div className="bg-white border border-[#E8E6DF] rounded-xl p-6">
+      <div className="bg-white border border-[#E5E7EB] rounded-xl p-6">
         <div className="flex items-center gap-2 mb-5">
-          <Languages className="h-4 w-4 text-[#82806F]" />
-          <h2 className="section-title text-[15px] text-[#16170E]">{t("sectionLanguage")}</h2>
+          <Languages className="h-4 w-4 text-[#64748B]" />
+          <h2 className="section-title text-[15px] text-[#0B1220]">{t("sectionLanguage")}</h2>
         </div>
         <div className="flex items-center justify-between">
-          <p className="text-[13px] text-[#82806F]">
+          <p className="text-[13px] text-[#64748B]">
             {t("languageLabel")}
           </p>
           <LanguageSwitcher currentLocale={locale} />
         </div>
       </div>
 
-      <div className="bg-white border border-[#E8E6DF] rounded-xl p-6">
+      <div className="bg-white border border-[#E5E7EB] rounded-xl p-6">
         <div className="flex items-center gap-2 mb-5">
-          <Users className="h-4 w-4 text-[#82806F]" />
-          <h2 className="section-title text-[15px] text-[#16170E]">{t("sectionTeam")}</h2>
+          <Users className="h-4 w-4 text-[#64748B]" />
+          <h2 className="section-title text-[15px] text-[#0B1220]">{t("sectionTeam")}</h2>
         </div>
         <TeamMembers
           members={membersWithUsers}
@@ -148,26 +164,28 @@ export default async function SettingsPage() {
         />
       </div>
 
-      <div className="bg-white border border-[#E8E6DF] rounded-xl p-6">
+      <div className="bg-white border border-[#E5E7EB] rounded-xl p-6">
         <div className="flex items-center gap-2 mb-4">
-          <Shield className="h-4 w-4 text-[#82806F]" />
-          <h2 className="section-title text-[15px] text-[#16170E]">{t("sectionData")}</h2>
+          <Shield className="h-4 w-4 text-[#64748B]" />
+          <h2 className="section-title text-[15px] text-[#0B1220]">{t("sectionData")}</h2>
         </div>
-        <p className="text-[13px] text-[#82806F] mb-4">
+        <p className="text-[13px] text-[#64748B] mb-4">
           {t("dataDescription")}
         </p>
         <div className="flex flex-wrap gap-3">
           <a
             href="/api/export"
             download
-            className="inline-flex items-center gap-2 rounded-lg border border-[#E8E6DF] bg-white px-3 py-2 text-[13px] font-semibold text-[#16170E] hover:bg-[#F7F7F4] transition-colors"
+            className="inline-flex items-center gap-2 rounded-lg border border-[#E5E7EB] bg-white px-3 py-2 text-[13px] font-semibold text-[#0B1220] hover:bg-[#F7F8FA] transition-colors"
           >
             <Download className="h-3.5 w-3.5" />
             {t("exportJson")}
           </a>
-          <Link href="/terms" className="text-[13px] text-[#82806F] hover:underline self-center">{t("linkTerms")}</Link>
-          <Link href="/privacy" className="text-[13px] text-[#82806F] hover:underline self-center">{t("linkPrivacy")}</Link>
-          <Link href="/cookies" className="text-[13px] text-[#82806F] hover:underline self-center">{t("linkCookies")}</Link>
+          <Link href="/mentions-legales" className="text-[13px] text-[#64748B] hover:underline self-center">{t("linkLegal")}</Link>
+          <Link href="/terms" className="text-[13px] text-[#64748B] hover:underline self-center">{t("linkTerms")}</Link>
+          <Link href="/cgv" className="text-[13px] text-[#64748B] hover:underline self-center">{t("linkCgv")}</Link>
+          <Link href="/privacy" className="text-[13px] text-[#64748B] hover:underline self-center">{t("linkPrivacy")}</Link>
+          <Link href="/cookies" className="text-[13px] text-[#64748B] hover:underline self-center">{t("linkCookies")}</Link>
         </div>
       </div>
     </div>

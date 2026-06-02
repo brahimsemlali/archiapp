@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { formatMAD, formatDate } from "@/lib/format";
 import { createRecurringInvoiceAction, toggleRecurringInvoiceAction, deleteRecurringInvoiceAction, generateFromRecurringAction } from "@/lib/actions/recurring-invoices";
-import type { RecurringInvoiceValues } from "@/lib/actions/recurring-invoices";
+import type { RecurringInvoiceRow, RecurringInvoiceValues } from "@/lib/actions/recurring-invoices";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,15 +17,8 @@ import { Plus, RefreshCw, Pause, Play, Trash2, ChevronDown, ChevronUp, Loader2, 
 
 const FREQ_LABELS: Record<string, string> = { monthly: "Mensuelle", quarterly: "Trimestrielle", yearly: "Annuelle" };
 
-type RecurringRow = {
-  id: string; title: string; total_centimes: number; frequency: string;
-  next_date: string; active: boolean; tva_rate: number;
-  clients?: { name: string } | null; projects?: { title: string } | null;
-  items: Array<{ description: string; quantity: number; unitPrice: number; tvaRate: number }>;
-};
-
 interface Props {
-  initialRecurring: RecurringRow[];
+  initialRecurring: RecurringInvoiceRow[];
   clients: Array<{ id: string; name: string }>;
   projects: Array<{ id: string; title: string }>;
 }
@@ -33,7 +26,10 @@ interface Props {
 export function RecurringInvoicesPanel({ initialRecurring, clients }: Props) {
   const t = useTranslations("common");
   const router = useRouter();
-  const [recurring, setRecurring] = useState(initialRecurring);
+  const [recurringSnapshot, setRecurringSnapshot] = useState({
+    source: initialRecurring,
+    recurring: initialRecurring,
+  });
   const [expanded, setExpanded] = useState(false);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -43,6 +39,18 @@ export function RecurringInvoicesPanel({ initialRecurring, clients }: Props) {
     subtotalCentimes: 0, tvaRate: 20, tvaCentimes: 0, totalCentimes: 0,
     frequency: "monthly", nextDate: new Date().toISOString().split("T")[0]!, autoSend: false,
   });
+
+  if (recurringSnapshot.source !== initialRecurring) {
+    setRecurringSnapshot({ source: initialRecurring, recurring: initialRecurring });
+  }
+
+  const recurring = recurringSnapshot.recurring;
+  const setRecurring = (update: RecurringInvoiceRow[] | ((currentRecurring: RecurringInvoiceRow[]) => RecurringInvoiceRow[])) => {
+    setRecurringSnapshot((current) => ({
+      source: current.source,
+      recurring: typeof update === "function" ? update(current.recurring) : update,
+    }));
+  };
 
   function updateItem(i: number, field: string, value: string | number) {
     setForm((f) => {
@@ -59,9 +67,9 @@ export function RecurringInvoicesPanel({ initialRecurring, clients }: Props) {
     const r = await createRecurringInvoiceAction(form);
     if (!r.ok) { toast.error(r.error); setSaving(false); return; }
     toast.success("Modèle récurrent créé.");
+    setRecurring((current) => [r.data, ...current].sort((a, b) => a.next_date.localeCompare(b.next_date)));
     setSaving(false);
     setOpen(false);
-    router.refresh();
   }
 
   async function handleToggle(id: string, active: boolean) {
@@ -96,12 +104,12 @@ export function RecurringInvoicesPanel({ initialRecurring, clients }: Props) {
 
   if (recurring.length === 0 && !expanded) {
     return (
-      <div className="border border-dashed border-[#E8E6DF] rounded-xl p-4 flex items-center justify-between gap-3">
+      <div className="border border-dashed border-[#E5E7EB] rounded-xl p-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <RefreshCw className="h-4 w-4 text-[#ADAB9D]" />
           <div>
-            <p className="text-sm font-medium text-[#16170E]">Facturation récurrente</p>
-            <p className="text-xs text-[#82806F]">Automatisez vos factures mensuelles ou trimestrielles.</p>
+            <p className="text-sm font-medium text-[#0B1220]">Facturation récurrente</p>
+            <p className="text-xs text-[#64748B]">Automatisez vos factures mensuelles ou trimestrielles.</p>
           </div>
         </div>
         <Button size="sm" variant="outline" onClick={() => { setExpanded(true); setOpen(true); }}>
@@ -112,26 +120,26 @@ export function RecurringInvoicesPanel({ initialRecurring, clients }: Props) {
   }
 
   return (
-    <div className="bg-white border border-[#E8E6DF] rounded-xl overflow-hidden">
+    <div className="bg-white border border-[#E5E7EB] rounded-xl overflow-hidden">
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#F2F2EE] transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#F1F5F9] transition-colors"
       >
         <div className="flex items-center gap-2.5">
-          <RefreshCw className="h-4 w-4 text-[#82806F]" />
-          <p className="text-sm font-semibold text-[#16170E]">Facturation récurrente</p>
+          <RefreshCw className="h-4 w-4 text-[#64748B]" />
+          <p className="text-sm font-semibold text-[#0B1220]">Facturation récurrente</p>
           <Badge variant="outline" className="text-[10px]">{recurring.length} modèle{recurring.length > 1 ? "s" : ""}</Badge>
         </div>
-        {expanded ? <ChevronUp className="h-4 w-4 text-[#82806F]" /> : <ChevronDown className="h-4 w-4 text-[#82806F]" />}
+        {expanded ? <ChevronUp className="h-4 w-4 text-[#64748B]" /> : <ChevronDown className="h-4 w-4 text-[#64748B]" />}
       </button>
 
       {expanded && (
-        <div className="border-t border-[#E8E6DF] divide-y divide-[#F2F2EE]">
+        <div className="border-t border-[#E5E7EB] divide-y divide-[#F1F5F9]">
           {recurring.map((r) => (
             <div key={r.id} className={`px-4 py-3 flex items-center justify-between gap-3 ${!r.active ? "opacity-50" : ""}`}>
               <div className="min-w-0">
-                <p className="text-sm font-medium text-[#16170E] truncate">{r.title}</p>
-                <p className="text-xs text-[#82806F]">
+                <p className="text-sm font-medium text-[#0B1220] truncate">{r.title}</p>
+                <p className="text-xs text-[#64748B]">
                   {r.clients?.name ?? ""}{r.projects?.title ? ` · ${r.projects.title}` : ""}
                   {" · "}{FREQ_LABELS[r.frequency] ?? r.frequency}
                   {" · Prochaine : "}{formatDate(r.next_date)}
@@ -149,8 +157,8 @@ export function RecurringInvoicesPanel({ initialRecurring, clients }: Props) {
                   {generating === r.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Zap className="h-3 w-3" />}
                   Générer
                 </Button>
-                <button onClick={() => handleToggle(r.id, r.active)} className="h-7 w-7 flex items-center justify-center rounded hover:bg-[#F2F2EE]">
-                  {r.active ? <Pause className="h-3.5 w-3.5 text-[#82806F]" /> : <Play className="h-3.5 w-3.5 text-[#82806F]" />}
+                <button onClick={() => handleToggle(r.id, r.active)} className="h-7 w-7 flex items-center justify-center rounded hover:bg-[#F1F5F9]">
+                  {r.active ? <Pause className="h-3.5 w-3.5 text-[#64748B]" /> : <Play className="h-3.5 w-3.5 text-[#64748B]" />}
                 </button>
                 <button onClick={() => handleDelete(r.id)} className="h-7 w-7 flex items-center justify-center rounded hover:bg-red-50">
                   <Trash2 className="h-3.5 w-3.5 text-red-500" />
@@ -207,9 +215,9 @@ export function RecurringInvoicesPanel({ initialRecurring, clients }: Props) {
               </Button>
             </div>
             {form.totalCentimes > 0 && (
-              <div className="bg-[#F2F2EE] rounded-lg p-3 text-sm space-y-1">
-                <div className="flex justify-between"><span className="text-[#82806F]">Sous-total HT</span><span>{formatMAD(form.subtotalCentimes)}</span></div>
-                <div className="flex justify-between"><span className="text-[#82806F]">TVA 20%</span><span>{formatMAD(form.tvaCentimes)}</span></div>
+              <div className="bg-[#F1F5F9] rounded-lg p-3 text-sm space-y-1">
+                <div className="flex justify-between"><span className="text-[#64748B]">Sous-total HT</span><span>{formatMAD(form.subtotalCentimes)}</span></div>
+                <div className="flex justify-between"><span className="text-[#64748B]">TVA 20%</span><span>{formatMAD(form.tvaCentimes)}</span></div>
                 <div className="flex justify-between font-semibold"><span>Total TTC</span><span>{formatMAD(form.totalCentimes)}</span></div>
               </div>
             )}

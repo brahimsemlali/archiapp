@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,7 @@ export function ContractEditor({ contractId, initialContent, status }: ContractE
   const [saving, setSaving] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const isFinalized = status === "finalise";
   const isArchived = status === "archive";
 
@@ -111,7 +113,6 @@ export function ContractEditor({ contractId, initialContent, status }: ContractE
   }, [contractId]);
 
   const handleArchive = useCallback(async () => {
-    if (!confirm("Archiver ce contrat ? Il ne sera plus visible par défaut.")) return;
     setArchiving(true);
     const result = await archiveContractAction(contractId);
     setArchiving(false);
@@ -189,7 +190,7 @@ export function ContractEditor({ contractId, initialContent, status }: ContractE
             <Button
               variant="ghost"
               size="sm"
-              onClick={handleArchive}
+              onClick={() => setConfirmArchive(true)}
               disabled={archiving}
               className="text-muted-foreground"
             >
@@ -212,6 +213,15 @@ export function ContractEditor({ contractId, initialContent, status }: ContractE
 
       {/* Editor */}
       <EditorContent editor={editor} />
+      <ConfirmDialog
+        open={confirmArchive}
+        onOpenChange={setConfirmArchive}
+        title="Archiver ce contrat ?"
+        description="Il ne sera plus visible par défaut."
+        confirmLabel="Archiver"
+        variant="default"
+        onConfirm={handleArchive}
+      />
     </div>
   );
 }

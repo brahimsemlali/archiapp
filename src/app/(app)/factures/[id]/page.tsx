@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import { FactureDetail } from "@/components/factures/facture-detail";
 import type { DevisItem } from "@/lib/validators/devis";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export default async function FactureDetailPage({
   params,
@@ -13,20 +14,38 @@ export default async function FactureDetailPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+  const workspaceId = await getWorkspaceId(supabase);
+  if (!workspaceId) notFound();
 
   const { data: facture } = await supabase
     .from("factures")
-    .select("*, clients(id, name, address, ice, cin), projects(id, title)")
+    .select("*, clients!factures_client_id_fkey(id, name, address, ice, cin), projects!factures_project_id_fkey(id, title)")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (!facture) notFound();
 
-  const { data: firmProfile } = await supabase
-    .from("firm_profile")
-    .select("firm_name, architect_name, address, ice, email, phone")
-    .eq("workspace_id", facture.workspace_id)
-    .single();
+  const [{ data: firmProfile }, { data: sentSnapshot }, { data: statusEvents }] = await Promise.all([
+    supabase
+      .from("firm_profile")
+      .select("firm_name, architect_name, address, ice, email, phone")
+      .eq("workspace_id", workspaceId)
+      .single(),
+    supabase
+      .from("invoice_snapshots")
+      .select("id, created_at")
+      .eq("workspace_id", workspaceId)
+      .eq("facture_id", id)
+      .eq("snapshot_type", "sent")
+      .maybeSingle(),
+    supabase
+      .from("invoice_status_events")
+      .select("id, previous_status, next_status, source, created_at")
+      .eq("workspace_id", workspaceId)
+      .eq("facture_id", id)
+      .order("created_at", { ascending: false }),
+  ]);
 
   const client = (facture.clients as unknown) as { id: string; name: string; address?: string; ice?: string; cin?: string } | null;
   const project = (facture.projects as unknown) as { id: string; title: string } | null;
@@ -70,6 +89,8 @@ export default async function FactureDetailPage({
         client={client}
         project={project}
         firmProfile={firmProfile}
+        sentSnapshot={sentSnapshot}
+        statusEvents={statusEvents ?? []}
       />
     </div>
   );

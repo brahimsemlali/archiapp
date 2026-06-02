@@ -35,6 +35,11 @@
     "recentActivity": "Activité récente",
     "noActivity": "Aucune activité récente.",
     "greeting": "Bonjour, {name}.",
+    "headerStats": {
+      "clients": "{count, plural, =0 {# client} =1 {# client} other {# clients}}",
+      "tasksDueSoon": "{count, plural, =0 {# tâche proche} =1 {# tâche proche} other {# tâches proches}}",
+      "draftContracts": "{count, plural, =0 {# contrat brouillon} =1 {# contrat brouillon} other {# contrats brouillon}}"
+    },
     "setupBanner": {
       "title": "Mise en route",
       "description": "Complétez votre profil cabinet pour générer un premier dossier commercial complet et vérifier vos PDFs.",
@@ -423,7 +428,9 @@
     "sectionData": "Données & confidentialité",
     "dataDescription": "Exportez l'intégralité de vos données au format JSON. Consultez nos pages légales pour en savoir plus sur l'utilisation de vos données.",
     "exportJson": "Exporter mes données (JSON)",
+    "linkLegal": "Mentions légales",
     "linkTerms": "Conditions générales",
+    "linkCgv": "Conditions de vente",
     "linkPrivacy": "Confidentialité",
     "linkCookies": "Cookies"
   },
@@ -554,7 +561,9 @@
     "hasAccount": "Déjà un compte ?",
     "loginWithGoogle": "Continuer avec Google",
     "loginError": "Email ou mot de passe incorrect.",
-    "signupError": "Erreur lors de la création du compte."
+    "signupError": "Erreur lors de la création du compte.",
+    "acceptTerms": "J'accepte les <terms>Conditions générales</terms> et la <privacy>Politique de confidentialité</privacy>.",
+    "acceptRequired": "Vous devez accepter les conditions pour continuer."
   },
   "common": {
     "loading": "Chargement...",
@@ -685,6 +694,13 @@
     "signature_portal_created": "Contrat signé via portail",
     "site_issue_created": "Réserve chantier créée",
     "boq_item_created": "Poste BOQ ajouté",
-    "settings_firm_profile_updated": "Profil cabinet mis à jour"
+    "settings_firm_profile_updated": "Profil cabinet mis à jour",
+    "superadmin_workspace_updated": "Workspace mis à jour par superadmin",
+    "superadmin_owner_banned": "Login propriétaire bloqué par superadmin",
+    "superadmin_owner_unbanned": "Login propriétaire réactivé par superadmin",
+    "superadmin_user_banned": "Utilisateur bloqué par superadmin",
+    "superadmin_user_unbanned": "Utilisateur réactivé par superadmin",
+    "billing_lemonsqueezy_webhook": "Abonnement synchronisé",
+    "activation_demo_workspace_created": "Données exemple installées"
   }
 }

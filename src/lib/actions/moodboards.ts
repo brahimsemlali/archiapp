@@ -3,7 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { assertWorkspaceRecord, requireWorkspaceRole } from "@/lib/workspace";
 import { normalizeExternalUrl } from "@/lib/url";
-import { assertPublicHttpUrl } from "@/lib/server/url-safety";
+import { assertPublicHttpUrl, fetchPublicHttpUrl } from "@/lib/server/url-safety";
 import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
 import type { InspirationItem } from "@/components/projects/inspiration-board";
@@ -64,7 +64,7 @@ export async function addMoodboardLinkAction(
     // Web page — extract og:image from HTML
     let html: string;
     try {
-      const res = await fetch(url.href, {
+      const res = await fetchPublicHttpUrl(url, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",

@@ -21,9 +21,21 @@ interface ProjectNotesEditorProps {
 
 export function ProjectNotesEditor({ projectId, initialNotes }: ProjectNotesEditorProps) {
   const t = useTranslations("common");
-  const [notes, setNotes] = useState(initialNotes);
+  const [noteSnapshot, setNoteSnapshot] = useState({
+    source: initialNotes,
+    notes: initialNotes,
+  });
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+
+  if (noteSnapshot.source !== initialNotes && !dirty) {
+    setNoteSnapshot({ source: initialNotes, notes: initialNotes });
+  }
+
+  const notes = noteSnapshot.notes;
+  const setNotes = (nextNotes: string) => {
+    setNoteSnapshot((current) => ({ source: current.source, notes: nextNotes }));
+  };
 
   const handleChange = useCallback((value: string | undefined) => {
     setNotes(value ?? "");

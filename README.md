@@ -4,7 +4,7 @@ Business management SaaS for architects, decorators, and design studios in Moroc
 
 ## Tech Stack
 
-- **Next.js 15** (App Router, TypeScript strict)
+- **Next.js 16** (App Router, TypeScript strict)
 - **Tailwind CSS** + **shadcn/ui**
 - **Supabase** (Auth, PostgreSQL, Storage)
 - **Drizzle ORM**
@@ -34,10 +34,13 @@ Fill in:
 - `SUPABASE_SERVICE_ROLE_KEY` — from Supabase project settings (server only)
 - `DATABASE_URL` — Supabase direct connection string (for Drizzle)
 - `ANTHROPIC_API_KEY` — from console.anthropic.com
+- `LEMON_SQUEEZY_*` — optional billing checkout/webhook variables for paid plans
 
 ### 3. Database
 
-Run `supabase/migrations/001_initial.sql` in your Supabase SQL editor. This creates all tables, enums, RLS policies, and the auto-workspace-on-signup trigger.
+Run the SQL files in `supabase/migrations/` in timestamp order. The later migrations add workspace membership, time tracking, client portal, SaaS hardening, Data API grants, trial fields, and billing-ready subscription columns.
+
+Do not rerun only `001_initial.sql` on an existing database; it creates base enum types and will fail if those already exist.
 
 ### 4. Dev server
 
@@ -60,6 +63,8 @@ Open [http://localhost:3000](http://localhost:3000).
 ## Project Structure
 
 See `CLAUDE.md` for the full architecture reference.
+
+For future AI coding agents, see `docs/ai-agent-handoff.md`. It explains what the app is, the current SaaS features, key architecture files, validation commands, and the recommended next build priorities.
 
 ## Changelog
 

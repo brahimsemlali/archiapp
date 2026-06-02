@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { ProjectNotesEditor } from "@/components/projects/project-notes-editor";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export default async function ProjectNotesPage({
   params,
@@ -11,11 +12,14 @@ export default async function ProjectNotesPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+  const workspaceId = await getWorkspaceId(supabase);
+  if (!workspaceId) notFound();
 
   const { data: project } = await supabase
     .from("projects")
     .select("id, title, notes")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (!project) notFound();

@@ -1,4 +1,27 @@
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://archidesk.ma";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
+function escapeHtml(value: string | number | null | undefined): string {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function escapeTextBlock(value: string | number | null | undefined): string {
+  return escapeHtml(value).replaceAll("\n", "<br />");
+}
+
+function safeHref(href: string): string {
+  try {
+    const url = new URL(href, APP_URL);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return escapeHtml(APP_URL);
+    return escapeHtml(url.href);
+  } catch {
+    return escapeHtml(APP_URL);
+  }
+}
 
 function layout(body: string, firmName?: string): string {
   return `<!DOCTYPE html>
@@ -14,7 +37,7 @@ function layout(body: string, firmName?: string): string {
     <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;max-width:600px;width:100%;">
       <tr>
         <td style="background:#1e3a8a;padding:20px 32px;">
-          <p style="margin:0;font-size:18px;font-weight:700;color:#ffffff;">${firmName ?? "ArchiDesk"}</p>
+          <p style="margin:0;font-size:18px;font-weight:700;color:#ffffff;">${escapeHtml(firmName ?? "ArchiDesk")}</p>
         </td>
       </tr>
       <tr><td style="padding:32px;">${body}</td></tr>
@@ -31,11 +54,11 @@ function layout(body: string, firmName?: string): string {
 }
 
 function btn(label: string, href: string): string {
-  return `<a href="${href}" style="display:inline-block;margin-top:24px;padding:12px 24px;background:#1e3a8a;color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">${label}</a>`;
+  return `<a href="${safeHref(href)}" style="display:inline-block;margin-top:24px;padding:12px 24px;background:#1e3a8a;color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">${escapeHtml(label)}</a>`;
 }
 
 function h1(text: string): string {
-  return `<h1 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#1e293b;">${text}</h1>`;
+  return `<h1 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#1e293b;">${escapeHtml(text)}</h1>`;
 }
 
 function p(text: string): string {
@@ -44,8 +67,8 @@ function p(text: string): string {
 
 function detail(label: string, value: string): string {
   return `<tr>
-    <td style="padding:8px 0;font-size:13px;color:#64748b;width:140px;vertical-align:top;">${label}</td>
-    <td style="padding:8px 0;font-size:13px;color:#1e293b;font-weight:500;">${value}</td>
+    <td style="padding:8px 0;font-size:13px;color:#64748b;width:140px;vertical-align:top;">${escapeHtml(label)}</td>
+    <td style="padding:8px 0;font-size:13px;color:#1e293b;font-weight:500;">${escapeHtml(value)}</td>
   </tr>`;
 }
 
@@ -69,8 +92,8 @@ export function devisSentEmail(opts: {
   const subject = `Devis ${opts.devisNumber} — ${opts.firmName}`;
   const body =
     h1(`Votre devis est disponible`) +
-    p(`Bonjour ${opts.clientName},`) +
-    p(`Veuillez trouver ci-dessous le devis que ${opts.firmName} vous a transmis. Vous pouvez le consulter, l'accepter ou le refuser depuis votre espace client.`) +
+    p(`Bonjour ${escapeHtml(opts.clientName)},`) +
+    p(`Veuillez trouver ci-dessous le devis que ${escapeHtml(opts.firmName)} vous a transmis. Vous pouvez le consulter, l'accepter ou le refuser depuis votre espace client.`) +
     detailTable(
       detail("Référence", opts.devisNumber) +
       detail("Objet", opts.devisTitle) +
@@ -93,8 +116,8 @@ export function factureSentEmail(opts: {
   const subject = `Facture ${opts.factureNumber} — ${opts.firmName}`;
   const body =
     h1(`Votre facture est disponible`) +
-    p(`Bonjour ${opts.clientName},`) +
-    p(`Veuillez trouver ci-dessous votre facture émise par ${opts.firmName}.`) +
+    p(`Bonjour ${escapeHtml(opts.clientName)},`) +
+    p(`Veuillez trouver ci-dessous votre facture émise par ${escapeHtml(opts.firmName)}.`) +
     detailTable(
       detail("Référence", opts.factureNumber) +
       detail("Objet", opts.factureTitle) +
@@ -117,7 +140,7 @@ export function contractSignedEmail(opts: {
   const subject = `Contrat signé — ${opts.contractTitle}`;
   const body =
     h1("Un contrat vient d'être signé") +
-    p(`Le contrat <strong>${opts.contractTitle}</strong> a été signé électroniquement par le client.`) +
+    p(`Le contrat <strong>${escapeHtml(opts.contractTitle)}</strong> a été signé électroniquement par le client.`) +
     detailTable(
       detail("Client", opts.clientName) +
       detail("Signé par", opts.signerName) +
@@ -138,8 +161,8 @@ export function portalMessageEmail(opts: {
   const subject = `Nouveau message de ${opts.senderName} — ArchiDesk`;
   const body =
     h1("Nouveau message client") +
-    p(`<strong>${opts.senderName}</strong> vous a envoyé un message via le portail client (${opts.context}).`) +
-    `<blockquote style="margin:20px 0;padding:16px;background:#f8fafc;border-left:3px solid #1e3a8a;border-radius:0 8px 8px 0;font-size:14px;color:#334155;font-style:italic;">${opts.messageBody}</blockquote>` +
+    p(`<strong>${escapeHtml(opts.senderName)}</strong> vous a envoyé un message via le portail client (${escapeHtml(opts.context)}).`) +
+    `<blockquote style="margin:20px 0;padding:16px;background:#f8fafc;border-left:3px solid #1e3a8a;border-radius:0 8px 8px 0;font-size:14px;color:#334155;font-style:italic;">${escapeTextBlock(opts.messageBody)}</blockquote>` +
     btn("Répondre", opts.replyUrl);
   return { subject, html: layout(body, opts.firmName) };
 }
@@ -155,11 +178,11 @@ export function paymentReminderEmail(opts: {
 }): { subject: string; html: string } {
   const subject = `Rappel de paiement — Facture ${opts.factureNumber}`;
   const overdueNote = opts.daysOverdue > 0
-    ? `<p style="margin:12px 0;padding:12px 16px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:13px;color:#dc2626;font-weight:500;">Cette facture est en retard de ${opts.daysOverdue} jour(s).</p>`
+    ? `<p style="margin:12px 0;padding:12px 16px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:13px;color:#dc2626;font-weight:500;">Cette facture est en retard de ${escapeHtml(opts.daysOverdue)} jour(s).</p>`
     : "";
   const body =
     h1("Rappel de paiement") +
-    p(`Bonjour ${opts.clientName},`) +
+    p(`Bonjour ${escapeHtml(opts.clientName)},`) +
     p(`Nous vous rappelons qu'une facture est en attente de règlement.`) +
     overdueNote +
     detailTable(
@@ -206,7 +229,7 @@ export function inviteEmail(opts: {
   const subject = `Invitation à rejoindre ${opts.workspaceName} sur ArchiDesk`;
   const body =
     h1(`Vous êtes invité(e) à rejoindre ${opts.workspaceName}`) +
-    p(`<strong>${opts.inviterName}</strong> vous invite à collaborer sur l'espace de travail <strong>${opts.workspaceName}</strong> en tant que <strong>${roleLabel}</strong>.`) +
+    p(`<strong>${escapeHtml(opts.inviterName)}</strong> vous invite à collaborer sur l'espace de travail <strong>${escapeHtml(opts.workspaceName)}</strong> en tant que <strong>${escapeHtml(roleLabel)}</strong>.`) +
     p("Cliquez sur le bouton ci-dessous pour accepter l'invitation et configurer votre accès.") +
     btn("Accepter l'invitation", opts.inviteUrl) +
     `<p style="margin:20px 0 0;font-size:12px;color:#94a3b8;">Ce lien est valable 7 jours. Si vous n'attendiez pas cette invitation, ignorez ce message.</p>`;
@@ -223,6 +246,22 @@ export function passwordResetEmail(opts: {
     btn("Réinitialiser le mot de passe", opts.resetUrl) +
     `<p style="margin:20px 0 0;font-size:12px;color:#94a3b8;">Ce lien expire dans 1 heure. Si vous n'avez pas effectué cette demande, ignorez ce message — votre compte reste sécurisé.</p>`;
   return { subject, html: layout(body, "ArchiDesk") };
+}
+
+export function architectReplyEmail(opts: {
+  firmName: string;
+  clientName: string;
+  messageBody: string;
+  portalUrl: string;
+}): { subject: string; html: string } {
+  const subject = `Message de ${opts.firmName}`;
+  const body =
+    h1(`Message de ${opts.firmName}`) +
+    p(`Bonjour ${escapeHtml(opts.clientName)},`) +
+    p(`Votre architecte vous a envoyé un message via votre espace client.`) +
+    `<blockquote style="margin:20px 0;padding:16px;background:#f8fafc;border-left:3px solid #1e3a8a;border-radius:0 8px 8px 0;font-size:14px;color:#334155;font-style:italic;">${escapeTextBlock(opts.messageBody)}</blockquote>` +
+    btn("Voir votre espace client", opts.portalUrl);
+  return { subject, html: layout(body, opts.firmName) };
 }
 
 export { APP_URL };

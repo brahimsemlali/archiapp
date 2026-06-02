@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { createTaskAction, updateTaskAction } from "@/lib/actions/tasks";
 import type { TaskFormValues } from "@/lib/validators/tasks";
+import type { Task } from "./task-detail-panel";
 
 interface Project { id: string; title: string; client_id?: string | null }
 interface Client { id: string; name: string }
@@ -24,7 +25,7 @@ interface TaskFormProps {
   defaultProjectId?: string;
   defaultDueDate?: string;
   task?: { id: string } & TaskFormValues;
-  onSuccess?: () => void;
+  onSuccess?: (task?: Task) => void;
   onCancel?: () => void;
 }
 
@@ -67,7 +68,7 @@ export function TaskForm({ projects, clients, members = [], currentUserId, defau
     setSaving(false);
     if (!result.ok) { toast.error(result.error); return; }
     toast.success(task ? "Tâche mise à jour." : "Tâche créée.");
-    onSuccess?.();
+    onSuccess?.(result.data as Task);
   }
 
   return (
@@ -100,9 +101,18 @@ export function TaskForm({ projects, clients, members = [], currentUserId, defau
           <Select value={priority} onValueChange={(v) => setPriority(v as TaskFormValues["priority"])}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="haute">🔴 Haute</SelectItem>
-              <SelectItem value="moyenne">🟡 Moyenne</SelectItem>
-              <SelectItem value="basse">⚪ Basse</SelectItem>
+              <SelectItem value="haute">
+                <span className="h-2 w-2 rounded-full bg-[#C75B2E]" />
+                Haute
+              </SelectItem>
+              <SelectItem value="moyenne">
+                <span className="h-2 w-2 rounded-full bg-amber-400" />
+                Moyenne
+              </SelectItem>
+              <SelectItem value="basse">
+                <span className="h-2 w-2 rounded-full bg-[#2F8F5C]" />
+                Basse
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>

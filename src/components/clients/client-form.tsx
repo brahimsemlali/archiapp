@@ -1,6 +1,6 @@
 "use client";
 
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { clientSchema, type ClientFormValues } from "@/lib/validators/client";
 import { Button } from "@/components/ui/button";
@@ -29,14 +29,14 @@ export function ClientForm({ defaultValues, onSubmit, loading }: ClientFormProps
     register,
     handleSubmit,
     setValue,
-    watch,
+    control,
     formState: { errors },
   } = useForm<ClientFormValues>({
     resolver: zodResolver(clientSchema),
     defaultValues: { type: "particulier", ...defaultValues },
   });
 
-  const clientType = watch("type");
+  const clientType = useWatch({ control, name: "type" });
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

@@ -1,15 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ContractEditor } from "@/components/contracts/contract-editor";
-
-const STATUS_LABELS: Record<string, string> = {
-  brouillon: "Brouillon",
-  finalise: "Finalisé",
-  archive: "Archivé",
-};
+import { formatDate } from "@/lib/format";
+import { getWorkspaceId } from "@/lib/workspace";
+import { getTranslations } from "next-intl/server";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
   brouillon: "secondary",
@@ -23,13 +20,25 @@ export default async function ContractDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const t = await getTranslations("contracts");
+  const ts = await getTranslations("status.contract");
   const supabase = await createClient();
+  const workspaceId = await getWorkspaceId(supabase);
+  if (!workspaceId) notFound();
 
-  const { data: contract } = await supabase
-    .from("contracts")
-    .select("*, clients(id, name), projects(id, title)")
-    .eq("id", id)
-    .single();
+  const [{ data: contract }, { data: signature }] = await Promise.all([
+    supabase
+      .from("contracts")
+      .select("*, clients!contracts_client_id_fkey(id, name), projects!contracts_project_id_fkey(id, title)")
+      .eq("id", id)
+      .eq("workspace_id", workspaceId)
+      .single(),
+    supabase
+      .from("signatures")
+      .select("id, signer_name, signed_at")
+      .eq("contract_id", id)
+      .maybeSingle(),
+  ]);
 
   if (!contract) notFound();
 
@@ -46,7 +55,7 @@ export default async function ContractDetailPage({
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-bold tracking-tight">{contract.title}</h1>
             <Badge variant={STATUS_VARIANT[contract.status] ?? "secondary"}>
-              {STATUS_LABELS[contract.status] ?? contract.status}
+              {(["brouillon","finalise","archived"] as const).includes(contract.status as "brouillon"|"finalise"|"archived") ? ts(contract.status as "brouillon"|"finalise"|"archived") : contract.status}
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground mt-0.5 flex items-center gap-1 flex-wrap">
@@ -67,8 +76,15 @@ export default async function ContractDetailPage({
       </div>
 
       <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
-        ⚠️ Ce contrat est généré par IA. Faites-le valider par un juriste avant signature.
+        {t("disclaimer")}
       </div>
+
+      {signature && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3 flex items-center gap-2.5 text-sm text-emerald-800">
+          <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+          <span>{t("signed", { name: signature.signer_name, date: formatDate(signature.signed_at) })}</span>
+        </div>
+      )}
 
       <ContractEditor
         contractId={id}

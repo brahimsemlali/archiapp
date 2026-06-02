@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Share2, Copy, Check, Trash2, Loader2, ExternalLink } from "lucide-react";
 import { createProjectPortalLinkAction, revokeProjectPortalLinkAction } from "@/lib/actions/portal";
 import { toast } from "sonner";
@@ -16,6 +17,7 @@ export function SharePortalButton({ projectId, existingToken }: SharePortalButto
   const [loading, setLoading] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const portalUrl = token ? `${appUrl}/portal/${token}` : null;
@@ -44,7 +46,6 @@ export function SharePortalButton({ projectId, existingToken }: SharePortalButto
   }
 
   async function handleRevoke() {
-    if (!confirm("Révoquer ce lien ? Le client ne pourra plus y accéder.")) return;
     setRevoking(true);
     await revokeProjectPortalLinkAction(projectId);
     setRevoking(false);
@@ -99,7 +100,7 @@ export function SharePortalButton({ projectId, existingToken }: SharePortalButto
         variant="ghost"
         size="sm"
         className="text-destructive hover:text-destructive"
-        onClick={handleRevoke}
+        onClick={() => setConfirmRevoke(true)}
         disabled={revoking}
       >
         {revoking ? (
@@ -108,6 +109,14 @@ export function SharePortalButton({ projectId, existingToken }: SharePortalButto
           <Trash2 className="h-4 w-4" />
         )}
       </Button>
+      <ConfirmDialog
+        open={confirmRevoke}
+        onOpenChange={setConfirmRevoke}
+        title="Révoquer ce lien ?"
+        description="Le client ne pourra plus accéder au portail."
+        confirmLabel="Révoquer"
+        onConfirm={handleRevoke}
+      />
     </div>
   );
 }

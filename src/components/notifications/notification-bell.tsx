@@ -45,7 +45,7 @@ export function NotificationBell() {
           if (!open) loadAlerts();
         }}
         aria-label={`Notifications${count > 0 ? ` (${count})` : ""}`}
-        className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-[#E8E6DF] bg-white/75 text-[#6B6B5A] shadow-[0_8px_22px_rgba(22,23,14,0.045)] transition-all hover:bg-[#F7F7F4] hover:shadow-md"
+        className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-[#E5E7EB] bg-white/75 text-[#475569] shadow-[0_8px_22px_rgba(22,23,14,0.045)] transition-all hover:bg-[#F7F8FA] hover:shadow-md"
       >
         <Bell className="h-4 w-4" />
         {loaded && count > 0 && (
@@ -56,8 +56,8 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute end-0 top-11 z-50 w-80 md:w-96 shadow-xl rounded-xl">
-          <SmartNotificationsPanel alerts={alerts} />
+        <div className="fixed inset-x-3 top-[calc(3.75rem+env(safe-area-inset-top))] z-50 max-h-[calc(100dvh-5rem)] overflow-y-auto rounded-xl shadow-xl md:absolute md:inset-auto md:end-0 md:top-11 md:w-96">
+          <SmartNotificationsPanel alerts={alerts} loading={!loaded} />
         </div>
       )}
     </div>

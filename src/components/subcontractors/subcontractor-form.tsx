@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Loader2, Star } from "lucide-react";
-import { createSubcontractorAction, updateSubcontractorAction, type SubcontractorInput } from "@/lib/actions/subcontractors";
+import { createSubcontractorAction, updateSubcontractorAction, type SubcontractorInput, type SubcontractorRow } from "@/lib/actions/subcontractors";
 import { cn } from "@/lib/utils";
 
 const TRADES = [
@@ -21,7 +21,7 @@ const TRADES = [
 
 interface SubcontractorFormProps {
   subcontractor?: { id: string } & SubcontractorInput;
-  onSuccess?: () => void;
+  onSuccess?: (subcontractor: SubcontractorRow) => void;
   onCancel?: () => void;
 }
 
@@ -59,7 +59,7 @@ export function SubcontractorForm({ subcontractor, onSuccess, onCancel }: Subcon
     setSaving(false);
     if (!result.ok) { toast.error(result.error); return; }
     toast.success(subcontractor ? "Sous-traitant mis à jour." : "Sous-traitant ajouté.");
-    onSuccess?.();
+    onSuccess?.(result.data);
   }
 
   return (
@@ -123,7 +123,7 @@ export function SubcontractorForm({ subcontractor, onSuccess, onCancel }: Subcon
         <Textarea id="sc-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Observations, historique…" />
       </div>
 
-      <div className="flex flex-col-reverse gap-2 border-t border-[#E8E6DF] pt-4 sm:flex-row">
+      <div className="flex flex-col-reverse gap-2 border-t border-[#E5E7EB] pt-4 sm:flex-row">
         <Button type="submit" disabled={saving} className="flex-1">
           {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
           {subcontractor ? t("save") : t("add")}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import { updateDevisStatusAction, deleteDevisAction } from "@/lib/actions/devis";
 import { formatDate, formatMAD } from "@/lib/format";
@@ -10,16 +11,9 @@ import { Check, Send, X, Trash2, Loader2, Download, Edit, FileText, Receipt } fr
 import Link from "next/link";
 import type { DevisItem } from "@/lib/validators/devis";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 type DevisStatus = "brouillon" | "envoye" | "accepte" | "refuse" | "expire";
-
-const STATUS_LABELS: Record<DevisStatus, string> = {
-  brouillon: "Brouillon",
-  envoye: "Envoyé",
-  accepte: "Accepté",
-  refuse: "Refusé",
-  expire: "Expiré",
-};
 
 const STATUS_VARIANT: Record<DevisStatus, "default" | "secondary" | "outline" | "destructive"> = {
   brouillon: "secondary",
@@ -59,7 +53,11 @@ interface DevisDetailProps {
 export function DevisDetail({ devis: initial, client, project, firmProfile }: DevisDetailProps) {
   const [status, setStatus] = useState<DevisStatus>(initial.status);
   const [loading, setLoading] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const router = useRouter();
+  const t = useTranslations("devis.detail");
+  const ts = useTranslations("status.devis");
+  const tc = useTranslations("common");
 
   async function changeStatus(next: DevisStatus) {
     setLoading(next);
@@ -67,35 +65,32 @@ export function DevisDetail({ devis: initial, client, project, firmProfile }: De
     setLoading(null);
     if (!result.ok) { toast.error(result.error); return; }
     setStatus(next);
-    toast.success(`Statut mis à jour : ${STATUS_LABELS[next]}`);
+    toast.success(t("statusUpdated", { status: ts(next) }));
   }
 
   async function handleDelete() {
-    if (!confirm("Supprimer ce devis ? Cette action est irréversible.")) return;
     setLoading("delete");
     await deleteDevisAction(initial.id);
-    toast.success("Devis supprimé.");
+    toast.success(t("deleted"));
     router.push("/devis");
   }
-
-  const handlePrint = () => window.print();
 
   return (
     <div className="space-y-4">
       {/* Status + actions */}
       <div className="flex items-center gap-3 flex-wrap bg-white border rounded-xl p-4">
-        <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABELS[status]}</Badge>
+        <Badge variant={STATUS_VARIANT[status]}>{ts(status)}</Badge>
         <div className="flex gap-2 ml-auto flex-wrap">
           {status === "brouillon" && (
             <>
               <Link href={`/devis/${initial.id}/edit`}>
                 <Button variant="outline" size="sm">
-                  <Edit className="h-4 w-4 mr-2" />Modifier
+                  <Edit className="h-4 w-4 mr-2" />{tc("edit")}
                 </Button>
               </Link>
               <Button variant="outline" size="sm" onClick={() => changeStatus("envoye")} disabled={!!loading}>
                 {loading === "envoye" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
-                Marquer envoyé
+                {t("markSent")}
               </Button>
             </>
           )}
@@ -103,11 +98,11 @@ export function DevisDetail({ devis: initial, client, project, firmProfile }: De
             <>
               <Button variant="outline" size="sm" className="text-green-600 border-green-300" onClick={() => changeStatus("accepte")} disabled={!!loading}>
                 {loading === "accepte" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Check className="h-4 w-4 mr-2" />}
-                Accepté
+                {t("accepted")}
               </Button>
               <Button variant="outline" size="sm" className="text-destructive border-destructive/30" onClick={() => changeStatus("refuse")} disabled={!!loading}>
                 {loading === "refuse" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <X className="h-4 w-4 mr-2" />}
-                Refusé
+                {t("refused")}
               </Button>
             </>
           )}
@@ -115,15 +110,17 @@ export function DevisDetail({ devis: initial, client, project, firmProfile }: De
             <Link href={`/factures/new?fromDevis=${initial.id}`}>
               <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white">
                 <Receipt className="h-4 w-4 mr-2" />
-                Créer la facture
+                {t("createInvoice")}
               </Button>
             </Link>
           )}
-          <Button variant="outline" size="sm" onClick={handlePrint}>
-            <Download className="h-4 w-4 mr-2" />PDF / Imprimer
-          </Button>
+          <a href={`/api/devis/${initial.id}/pdf`} download>
+            <Button variant="outline" size="sm">
+              <Download className="h-4 w-4 mr-2" />{t("downloadPdf")}
+            </Button>
+          </a>
           {status === "brouillon" && (
-            <Button variant="ghost" size="sm" className="text-destructive" onClick={handleDelete} disabled={!!loading}>
+            <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setConfirmDelete(true)} disabled={!!loading}>
               {loading === "delete" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
             </Button>
           )}
@@ -135,7 +132,7 @@ export function DevisDetail({ devis: initial, client, project, firmProfile }: De
         {/* Firm header */}
         <div className="flex justify-between items-start mb-8">
           <div>
-            <p className="text-lg font-bold">{firmProfile?.firm_name ?? "Cabinet d'architecture"}</p>
+            <p className="text-lg font-bold">{firmProfile?.firm_name ?? t("firm")}</p>
             {firmProfile?.architect_name && <p className="text-sm text-gray-600">{firmProfile.architect_name}</p>}
             {firmProfile?.address && <p className="text-sm text-gray-500">{firmProfile.address}</p>}
             {firmProfile?.ice && <p className="text-sm text-gray-500">ICE : {firmProfile.ice}</p>}
@@ -145,12 +142,12 @@ export function DevisDetail({ devis: initial, client, project, firmProfile }: De
           <div className="text-right">
             <div className="inline-flex items-center gap-2 bg-gray-100 rounded-lg px-3 py-1.5 mb-3">
               <FileText className="h-4 w-4 text-gray-500" />
-              <span className="text-sm font-semibold text-gray-700">DEVIS</span>
+              <span className="text-sm font-semibold text-gray-700">{t("docLabel")}</span>
             </div>
             <p className="text-base font-bold">{initial.number}</p>
-            <p className="text-sm text-gray-500">Date : {formatDate(initial.createdAt)}</p>
+            <p className="text-sm text-gray-500">{t("dateLabel")} {formatDate(initial.createdAt)}</p>
             {initial.validUntil && (
-              <p className="text-sm text-gray-500">Valable jusqu'au : {formatDate(initial.validUntil)}</p>
+              <p className="text-sm text-gray-500">{t("validUntilLabel")} {formatDate(initial.validUntil)}</p>
             )}
           </div>
         </div>
@@ -158,7 +155,7 @@ export function DevisDetail({ devis: initial, client, project, firmProfile }: De
         {/* Client info */}
         {client && (
           <div className="bg-gray-50 rounded-lg p-4 mb-6 inline-block min-w-[200px]">
-            <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Destinataire</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">{t("recipient")}</p>
             <p className="font-semibold">{client.name}</p>
             {client.address && <p className="text-sm text-gray-600">{client.address}</p>}
             {client.ice && <p className="text-sm text-gray-500">ICE : {client.ice}</p>}
@@ -169,7 +166,7 @@ export function DevisDetail({ devis: initial, client, project, firmProfile }: De
         {/* Project ref */}
         {project && (
           <p className="text-sm text-gray-500 mb-6">
-            Réf. projet : <span className="font-medium text-gray-700">{project.title}</span>
+            {t("projectRef")} <span className="font-medium text-gray-700">{project.title}</span>
           </p>
         )}
 
@@ -180,11 +177,11 @@ export function DevisDetail({ devis: initial, client, project, firmProfile }: De
         <table className="w-full text-sm mb-6">
           <thead>
             <tr className="bg-gray-100">
-              <th className="text-left px-3 py-2 rounded-tl-lg">Description</th>
-              <th className="text-center px-3 py-2">Qté</th>
-              <th className="text-center px-3 py-2">Unité</th>
-              <th className="text-right px-3 py-2">P.U. HT</th>
-              <th className="text-right px-3 py-2 rounded-tr-lg">Total HT</th>
+              <th className="text-left px-3 py-2 rounded-tl-lg">{t("colDescription")}</th>
+              <th className="text-center px-3 py-2">{t("colQty")}</th>
+              <th className="text-center px-3 py-2">{t("colUnit")}</th>
+              <th className="text-right px-3 py-2">{t("colUnitPrice")}</th>
+              <th className="text-right px-3 py-2 rounded-tr-lg">{t("colTotal")}</th>
             </tr>
           </thead>
           <tbody>
@@ -206,15 +203,15 @@ export function DevisDetail({ devis: initial, client, project, firmProfile }: De
         <div className="flex justify-end">
           <div className="w-64 space-y-1.5">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Sous-total HT</span>
+              <span className="text-gray-500">{t("subtotal")}</span>
               <span>{formatMAD(initial.subtotalCentimes)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">TVA {initial.tvaRate}%</span>
+              <span className="text-gray-500">{t("tva", { rate: initial.tvaRate })}</span>
               <span>{formatMAD(initial.tvaCentimes)}</span>
             </div>
             <div className="flex justify-between font-bold text-base border-t pt-2">
-              <span>Total TTC</span>
+              <span>{t("totalTTC")}</span>
               <span className="text-primary">{formatMAD(initial.totalCentimes)}</span>
             </div>
           </div>
@@ -223,7 +220,7 @@ export function DevisDetail({ devis: initial, client, project, firmProfile }: De
         {/* Notes */}
         {initial.notes && (
           <div className="mt-6 border-t pt-4">
-            <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">Conditions</p>
+            <p className="text-xs text-gray-400 uppercase tracking-wide mb-1">{t("conditions")}</p>
             <p className="text-sm text-gray-600 whitespace-pre-wrap">{initial.notes}</p>
           </div>
         )}
@@ -231,19 +228,27 @@ export function DevisDetail({ devis: initial, client, project, firmProfile }: De
         {/* Signature area */}
         <div className="mt-10 grid grid-cols-2 gap-8">
           <div>
-            <p className="text-xs text-gray-400 mb-6">Cachet et signature de l'architecte</p>
+            <p className="text-xs text-gray-400 mb-6">{t("signatureArchitect")}</p>
             <div className="border-t border-dashed border-gray-300 pt-2">
               <p className="text-xs text-gray-400">{firmProfile?.architect_name ?? ""}</p>
             </div>
           </div>
           <div>
-            <p className="text-xs text-gray-400 mb-6">Bon pour accord — Signature du client</p>
+            <p className="text-xs text-gray-400 mb-6">{t("signatureClient")}</p>
             <div className="border-t border-dashed border-gray-300 pt-2">
               <p className="text-xs text-gray-400">{client?.name ?? ""}</p>
             </div>
           </div>
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={t("deleteTitle")}
+        description={t("deleteDescription")}
+        confirmLabel={t("deleteConfirm")}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { devisFormSchema, type DevisFormValues, type DevisItem } from "@/lib/validators/devis";
 import { createDevisAction, updateDevisAction } from "@/lib/actions/devis";
@@ -12,9 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Trash2, Loader2, GripVertical } from "lucide-react";
+import { Plus, Trash2, Loader2 } from "lucide-react";
 import { formatMAD } from "@/lib/format";
-import crypto from "crypto";
 
 interface DevisFormProps {
   clients: { id: string; name: string }[];
@@ -33,7 +32,7 @@ function inputToCentimes(val: string): number {
 
 function newItem(): DevisItem {
   return {
-    id: crypto.randomUUID(),
+    id: globalThis.crypto.randomUUID(),
     description: "",
     quantity: 1,
     unit: "forfait",
@@ -64,9 +63,10 @@ export function DevisForm({ clients, projects, defaultValues, devisId }: DevisFo
     name: "items",
   });
 
-  const watchItems = form.watch("items");
-  const watchTvaRate = form.watch("tvaRate");
-  const watchClientId = form.watch("clientId");
+  const watchItems = useWatch({ control: form.control, name: "items" }) ?? [];
+  const watchTvaRate = useWatch({ control: form.control, name: "tvaRate" });
+  const watchClientId = useWatch({ control: form.control, name: "clientId" });
+  const watchProjectId = useWatch({ control: form.control, name: "projectId" });
 
   const clientProjects = projects.filter((p) => p.client_id === watchClientId);
 
@@ -113,7 +113,7 @@ export function DevisForm({ clients, projects, defaultValues, devisId }: DevisFo
         <div className="space-y-1.5">
           <Label>Client *</Label>
           <Select
-            value={form.watch("clientId")}
+            value={watchClientId}
             onValueChange={(v) => {
               form.setValue("clientId", v ?? "");
               form.setValue("projectId", undefined);
@@ -137,7 +137,7 @@ export function DevisForm({ clients, projects, defaultValues, devisId }: DevisFo
           <div className="space-y-1.5">
             <Label>Projet (optionnel)</Label>
             <Select
-              value={form.watch("projectId") ?? "none"}
+              value={watchProjectId ?? "none"}
               onValueChange={(v) => form.setValue("projectId", !v || v === "none" ? undefined : v)}
             >
               <SelectTrigger>
@@ -185,9 +185,9 @@ export function DevisForm({ clients, projects, defaultValues, devisId }: DevisFo
             return (
               <div
                 key={field.id}
-                className="grid grid-cols-[1fr_80px_100px_120px_40px] gap-2 items-start bg-gray-50 rounded-lg p-2 border"
+                className="grid grid-cols-2 sm:grid-cols-[1fr_80px_100px_120px_40px] gap-2 items-start bg-gray-50 rounded-lg p-2 border"
               >
-                <div>
+                <div className="col-span-2 sm:col-span-1">
                   <Input
                     placeholder="Description de la prestation"
                     {...form.register(`items.${idx}.description`)}

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { requireWorkspaceRole } from "@/lib/workspace";
-import { anthropic, AI_MODEL } from "@/lib/ai/anthropic";
+import { anthropic, AI_MODEL, messageText } from "@/lib/ai/anthropic";
 import { assertAiUsageAvailable, recordAiUsage } from "@/lib/ai/usage";
 import { createTimeEntryAction } from "@/lib/actions/time-entries";
 import type { Result } from "@/types";
@@ -65,10 +65,101 @@ const voiceNoteSchema = z.object({
 
 type ExtractedTask = z.infer<typeof extractedTaskSchema>;
 
-function parseAiJson(text: string): z.infer<typeof meetingAiSchema> {
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  const json = JSON.parse(jsonMatch ? jsonMatch[0] : text) as unknown;
-  return meetingAiSchema.parse(json);
+const MAX_PV_SIGNER_NAME_LENGTH = 120;
+const MAX_PV_SIGNATURE_SVG_LENGTH = 500_000;
+
+type MeetingAi = z.infer<typeof meetingAiSchema>;
+
+function buildMeetingPrompt(args: { projectTitle: string; phase: string; title: string; date: string; notes: string }): string {
+  return `Tu es l'assistant opérationnel d'un cabinet d'architecture. Analyse ces notes de réunion et retourne uniquement un JSON valide.
+
+Projet: ${args.projectTitle}
+Phase: ${args.phase}
+Titre réunion: ${args.title}
+Date: ${args.date}
+
+Notes:
+${args.notes}
+
+Schéma JSON exact:
+{
+  "summary": "Résumé exécutif en français, 5-8 lignes",
+  "decisions": ["Décision claire"],
+  "risks": ["Risque ou blocage avec contexte"],
+  "tasks": [
+    {
+      "title": "Action concrète",
+      "assigneeHint": "Nom mentionné si disponible",
+      "dueDate": "YYYY-MM-DD si explicitement indiqué",
+      "priority": "haute|moyenne|basse",
+      "context": "Pourquoi cette tâche existe"
+    }
+  ]
+}`;
+}
+
+/** Extract + validate the AI JSON. Returns null on any parse/shape failure (never throws). */
+function extractMeetingJson(text: string): MeetingAi | null {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const braces = text.match(/\{[\s\S]*\}/);
+  const jsonStr = fenced?.[1] ?? braces?.[0] ?? text;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+  const validated = meetingAiSchema.safeParse(parsed);
+  return validated.success ? validated.data : null;
+}
+
+async function callMeetingAiOnce(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  workspaceId: string,
+  prompt: string,
+  metadata: Record<string, unknown>
+): Promise<{ apiError: string | null; ai: MeetingAi | null }> {
+  try {
+    const response = await anthropic.messages.create({
+      model: AI_MODEL,
+      max_tokens: 1500,
+      messages: [{ role: "user", content: prompt }],
+    });
+    await recordAiUsage(supabase, workspaceId, {
+      feature: "meeting_summary",
+      provider: "anthropic",
+      model: AI_MODEL,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      metadata,
+    });
+    return { apiError: null, ai: extractMeetingJson(messageText(response)) };
+  } catch (err) {
+    return { apiError: err instanceof Error ? err.message : "Erreur IA.", ai: null };
+  }
+}
+
+/**
+ * Run the meeting extraction: call the model, parse with Zod, and retry once with a
+ * stricter instruction if the JSON is malformed/truncated. Records usage on every call.
+ * Returns a friendly Result — never leaks raw JSON/Zod errors to the user.
+ */
+async function runMeetingExtraction(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  workspaceId: string,
+  prompt: string,
+  metadata: Record<string, unknown>
+): Promise<Result<MeetingAi>> {
+  const first = await callMeetingAiOnce(supabase, workspaceId, prompt, metadata);
+  if (first.apiError) return { ok: false, error: `Erreur API IA : ${first.apiError}` };
+  if (first.ai) return { ok: true, data: first.ai };
+
+  const strictPrompt = `${prompt}\n\nIMPORTANT: Renvoie UNIQUEMENT le JSON strict décrit ci-dessus, sans aucun texte ni markdown autour.`;
+  const second = await callMeetingAiOnce(supabase, workspaceId, strictPrompt, { ...metadata, retry: true });
+  if (second.apiError) return { ok: false, error: `Erreur API IA : ${second.apiError}` };
+  if (second.ai) return { ok: true, data: second.ai };
+
+  return { ok: false, error: "L'IA n'a pas pu structurer la réponse. Veuillez réessayer." };
 }
 
 export async function createMeetingAction(
@@ -153,69 +244,33 @@ export async function generateAiForMeetingAction(
     .eq("id", meeting.project_id)
     .single();
 
-  const prompt = `Tu es l'assistant opérationnel d'un cabinet d'architecture. Analyse ces notes de réunion et retourne uniquement un JSON valide.
+  const prompt = buildMeetingPrompt({
+    projectTitle: project?.title ?? "",
+    phase: project?.phase ?? "",
+    title: meeting.title,
+    date: meeting.meeting_date,
+    notes: meeting.raw_notes,
+  });
 
-Projet: ${project?.title ?? ""}
-Phase: ${project?.phase ?? ""}
-Titre réunion: ${meeting.title}
-Date: ${meeting.meeting_date}
+  const result = await runMeetingExtraction(supabase, workspaceId, prompt, { meetingId });
+  if (!result.ok) return result;
+  const ai = result.data;
 
-Notes:
-${meeting.raw_notes}
+  await supabase
+    .from("meeting_notes")
+    .update({
+      summary: ai.summary,
+      decisions: ai.decisions,
+      risks: ai.risks,
+      extracted_tasks: ai.tasks,
+      ai_generated: true,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", meetingId)
+    .eq("workspace_id", workspaceId);
 
-Schéma JSON exact:
-{
-  "summary": "Résumé exécutif en français, 5-8 lignes",
-  "decisions": ["Décision claire"],
-  "risks": ["Risque ou blocage avec contexte"],
-  "tasks": [
-    {
-      "title": "Action concrète",
-      "assigneeHint": "Nom mentionné si disponible",
-      "dueDate": "YYYY-MM-DD si explicitement indiqué",
-      "priority": "haute|moyenne|basse",
-      "context": "Pourquoi cette tâche existe"
-    }
-  ]
-}`;
-
-  try {
-    const response = await anthropic.messages.create({
-      model: AI_MODEL,
-      max_tokens: 900,
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    await recordAiUsage(supabase, workspaceId, {
-      feature: "meeting_summary",
-      provider: "anthropic",
-      model: AI_MODEL,
-      inputTokens: response.usage.input_tokens,
-      outputTokens: response.usage.output_tokens,
-      metadata: { meetingId },
-    });
-
-    const text = (response.content[0] as { type: string; text: string }).text ?? "";
-    const ai = parseAiJson(text);
-
-    await supabase
-      .from("meeting_notes")
-      .update({
-        summary: ai.summary,
-        decisions: ai.decisions,
-        risks: ai.risks,
-        extracted_tasks: ai.tasks,
-        ai_generated: true,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", meetingId)
-      .eq("workspace_id", workspaceId);
-
-    revalidatePath(`/projects/${meeting.project_id}`);
-    return { ok: true, data: { summary: ai.summary, decisions: ai.decisions, risks: ai.risks, tasks: ai.tasks } };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Erreur IA." };
-  }
+  revalidatePath(`/projects/${meeting.project_id}`);
+  return { ok: true, data: { summary: ai.summary, decisions: ai.decisions, risks: ai.risks, tasks: ai.tasks } };
 }
 
 export async function generateMeetingSummaryAction(input: z.input<typeof meetingInputSchema>): Promise<Result<{ id: string; summary: string; decisions: string[]; risks: string[]; tasks: ExtractedTask[] }>> {
@@ -238,85 +293,49 @@ export async function generateMeetingSummaryAction(input: z.input<typeof meeting
     .single();
   if (!project) return { ok: false, error: "Projet introuvable." };
 
-  const prompt = `Tu es l'assistant opérationnel d'un cabinet d'architecture. Analyse ces notes de réunion et retourne uniquement un JSON valide.
+  const prompt = buildMeetingPrompt({
+    projectTitle: project.title,
+    phase: project.phase,
+    title: parsed.data.title,
+    date: parsed.data.meetingDate,
+    notes: parsed.data.rawNotes,
+  });
 
-Projet: ${project.title}
-Phase: ${project.phase}
-Titre réunion: ${parsed.data.title}
-Date: ${parsed.data.meetingDate}
+  const result = await runMeetingExtraction(supabase, workspaceId, prompt, { projectId: parsed.data.projectId });
+  if (!result.ok) return result;
+  const ai = result.data;
 
-Notes:
-${parsed.data.rawNotes}
-
-Schéma JSON exact:
-{
-  "summary": "Résumé exécutif en français, 5-8 lignes",
-  "decisions": ["Décision claire"],
-  "risks": ["Risque ou blocage avec contexte"],
-  "tasks": [
-    {
-      "title": "Action concrète",
-      "assigneeHint": "Nom mentionné si disponible",
-      "dueDate": "YYYY-MM-DD si explicitement indiqué",
-      "priority": "haute|moyenne|basse",
-      "context": "Pourquoi cette tâche existe"
-    }
-  ]
-}`;
-
-  try {
-    const response = await anthropic.messages.create({
-      model: AI_MODEL,
-      max_tokens: 900,
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    await recordAiUsage(supabase, workspaceId, {
-      feature: "meeting_summary",
-      provider: "anthropic",
-      model: AI_MODEL,
-      inputTokens: response.usage.input_tokens,
-      outputTokens: response.usage.output_tokens,
-      metadata: { projectId: parsed.data.projectId },
-    });
-
-    const text = (response.content[0] as { type: string; text: string }).text ?? "";
-    const ai = parseAiJson(text);
-
-    const { data, error } = await supabase
-      .from("meeting_notes")
-      .insert({
-        workspace_id: workspaceId,
-        project_id: parsed.data.projectId,
-        created_by: user.id,
-        title: parsed.data.title,
-        meeting_date: parsed.data.meetingDate,
-        meeting_type: "reunion_client",
-        attendees: [],
-        raw_notes: parsed.data.rawNotes,
-        summary: ai.summary,
-        decisions: ai.decisions,
-        risks: ai.risks,
-        extracted_tasks: ai.tasks,
-        ai_generated: true,
-      })
-      .select("id")
-      .single();
-
-    if (error) return { ok: false, error: dbError(error) };
-
-    await supabase.from("activity_log").insert({
+  const { data, error } = await supabase
+    .from("meeting_notes")
+    .insert({
       workspace_id: workspaceId,
       project_id: parsed.data.projectId,
-      action: "meeting.summary_generated",
-      metadata: { title: parsed.data.title, tasks: ai.tasks.length, risks: ai.risks.length },
-    });
+      created_by: user.id,
+      title: parsed.data.title,
+      meeting_date: parsed.data.meetingDate,
+      meeting_type: "reunion_client",
+      attendees: [],
+      raw_notes: parsed.data.rawNotes,
+      summary: ai.summary,
+      decisions: ai.decisions,
+      risks: ai.risks,
+      extracted_tasks: ai.tasks,
+      ai_generated: true,
+    })
+    .select("id")
+    .single();
 
-    revalidatePath(`/projects/${parsed.data.projectId}`);
-    return { ok: true, data: { id: data.id, summary: ai.summary, decisions: ai.decisions, risks: ai.risks, tasks: ai.tasks } };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Erreur IA." };
-  }
+  if (error) return { ok: false, error: dbError(error) };
+
+  await supabase.from("activity_log").insert({
+    workspace_id: workspaceId,
+    project_id: parsed.data.projectId,
+    action: "meeting.summary_generated",
+    metadata: { title: parsed.data.title, tasks: ai.tasks.length, risks: ai.risks.length },
+  });
+
+  revalidatePath(`/projects/${parsed.data.projectId}`);
+  return { ok: true, data: { id: data.id, summary: ai.summary, decisions: ai.decisions, risks: ai.risks, tasks: ai.tasks } };
 }
 
 export async function createTasksFromMeetingAction(meetingId: string): Promise<Result<{ created: number }>> {
@@ -461,35 +480,63 @@ export async function signMeetingPvAction(input: {
   signerName: string;
   svgData: string;
 }): Promise<Result<void>> {
+  const signerName = input.signerName.trim();
+  if (!signerName || signerName.length > MAX_PV_SIGNER_NAME_LENGTH) {
+    return { ok: false, error: "Nom du signataire invalide." };
+  }
+  if (
+    !input.svgData.trim().startsWith("<svg") ||
+    input.svgData.length > MAX_PV_SIGNATURE_SVG_LENGTH
+  ) {
+    return { ok: false, error: "Signature invalide." };
+  }
+
   const supabase = await createServiceClient();
 
   const { data: shareLink } = await supabase
     .from("share_links")
-    .select("workspace_id, resource_id")
+    .select("workspace_id, resource_id, resource_type")
     .eq("token", input.portalToken)
+    .in("resource_type", ["project", "client"])
     .or("expires_at.is.null,expires_at.gt." + new Date().toISOString())
     .single();
   if (!shareLink) return { ok: false, error: "Lien de portail invalide ou expiré." };
 
   const { data: meeting } = await supabase
     .from("meeting_notes")
-    .select("id, pv_signed_at")
+    .select("id, project_id, pv_signed_at")
     .eq("id", input.meetingId)
     .eq("workspace_id", shareLink.workspace_id)
     .single();
   if (!meeting) return { ok: false, error: "Réunion introuvable." };
   if (meeting.pv_signed_at) return { ok: false, error: "Ce PV a déjà été signé." };
 
+  if (shareLink.resource_type === "project") {
+    if (meeting.project_id !== shareLink.resource_id) {
+      return { ok: false, error: "Réunion non autorisée pour ce portail." };
+    }
+  } else {
+    const { data: project } = await supabase
+      .from("projects")
+      .select("id")
+      .eq("id", meeting.project_id)
+      .eq("workspace_id", shareLink.workspace_id)
+      .eq("client_id", shareLink.resource_id)
+      .single();
+    if (!project) return { ok: false, error: "Réunion non autorisée pour ce portail." };
+  }
+
   const { error } = await supabase
     .from("meeting_notes")
     .update({
       pv_signed_at: new Date().toISOString(),
-      pv_signer_name: input.signerName.trim(),
+      pv_signer_name: signerName,
       pv_svg_data: input.svgData,
       updated_at: new Date().toISOString(),
     })
     .eq("id", input.meetingId)
-    .eq("workspace_id", shareLink.workspace_id);
+    .eq("workspace_id", shareLink.workspace_id)
+    .eq("project_id", meeting.project_id);
 
   if (error) return { ok: false, error: dbError(error) };
   return { ok: true, data: undefined };

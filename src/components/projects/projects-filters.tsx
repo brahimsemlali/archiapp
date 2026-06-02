@@ -46,19 +46,19 @@ export function ProjectsFilters({ clients }: ProjectsFiltersProps) {
   );
 
   return (
-    <div className="flex flex-wrap gap-3">
+    <div className="grid grid-cols-1 gap-2 rounded-2xl border border-[#E5E7EB] bg-white/72 p-3 shadow-[0_10px_28px_rgba(22,23,14,0.045)] sm:grid-cols-2 lg:flex lg:flex-wrap lg:bg-transparent lg:p-0 lg:shadow-none lg:border-0">
       <Input
         placeholder="Rechercher un projet..."
         defaultValue={searchParams.get("q") ?? ""}
         onChange={(e) => handleSearch(e.target.value)}
-        className="max-w-xs"
+        className="w-full lg:max-w-xs"
       />
 
       <Select
         defaultValue={phaseValue}
         onValueChange={(v) => update("phase", v ?? "all")}
       >
-        <SelectTrigger className="w-44">
+        <SelectTrigger className="w-full lg:w-44">
           <SelectValue placeholder="Phase" />
         </SelectTrigger>
         <SelectContent>
@@ -78,7 +78,7 @@ export function ProjectsFilters({ clients }: ProjectsFiltersProps) {
         defaultValue={statusValue}
         onValueChange={(v) => update("status", v ?? "all")}
       >
-        <SelectTrigger className="w-40">
+        <SelectTrigger className="w-full lg:w-40">
           <SelectValue placeholder="Statut" />
         </SelectTrigger>
         <SelectContent>
@@ -95,7 +95,7 @@ export function ProjectsFilters({ clients }: ProjectsFiltersProps) {
           defaultValue={clientValue}
           onValueChange={(v) => update("client", v ?? "all")}
         >
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-full lg:w-48">
             <SelectValue placeholder="Client" />
           </SelectTrigger>
           <SelectContent>

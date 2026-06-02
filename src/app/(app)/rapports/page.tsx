@@ -78,16 +78,16 @@ export default async function RapportsPage() {
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="pt-1">
         <p className="eyebrow mb-1">{t("eyebrow")}</p>
-        <h1 className="page-title text-[28px] text-[#16170E]">{t("title")}</h1>
-        <p className="text-[13.5px] text-[#82806F] mt-1">{t("subtitle", { year: now.getFullYear() })}</p>
+        <h1 className="page-title text-[28px] text-[#0B1220]">{t("title")}</h1>
+        <p className="text-[13.5px] text-[#64748B] mt-1">{t("subtitle", { year: now.getFullYear() })}</p>
       </div>
 
       <Tabs defaultValue="financier">
-        <TabsList className="h-9 bg-[#F2F2EE] border border-[#E8E6DF] p-0.5 rounded-lg flex-wrap">
-          <TabsTrigger value="financier" className="text-[13px] rounded-md data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:text-[#16170E] text-[#82806F]">{t("tabReports")}</TabsTrigger>
-          <TabsTrigger value="tresorerie" className="text-[13px] rounded-md data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:text-[#16170E] text-[#82806F]">{t("tabCashflow")}</TabsTrigger>
-          <TabsTrigger value="rentabilite" className="text-[13px] rounded-md data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:text-[#16170E] text-[#82806F]">{t("tabProfitability")}</TabsTrigger>
-          <TabsTrigger value="rapprochement" className="text-[13px] rounded-md data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:text-[#16170E] text-[#82806F]">{t("tabReconciliation")}</TabsTrigger>
+        <TabsList className="h-9 bg-[#F1F5F9] border border-[#E5E7EB] p-0.5 rounded-lg flex-wrap">
+          <TabsTrigger value="financier" className="text-[13px] rounded-md data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:text-[#0B1220] text-[#64748B]">{t("tabReports")}</TabsTrigger>
+          <TabsTrigger value="tresorerie" className="text-[13px] rounded-md data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:text-[#0B1220] text-[#64748B]">{t("tabCashflow")}</TabsTrigger>
+          <TabsTrigger value="rentabilite" className="text-[13px] rounded-md data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:text-[#0B1220] text-[#64748B]">{t("tabProfitability")}</TabsTrigger>
+          <TabsTrigger value="rapprochement" className="text-[13px] rounded-md data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:text-[#0B1220] text-[#64748B]">{t("tabReconciliation")}</TabsTrigger>
         </TabsList>
         <TabsContent value="financier" className="mt-4">
           <FinancialReports

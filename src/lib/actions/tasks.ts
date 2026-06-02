@@ -8,8 +8,67 @@ import { taskFormSchema, taskUpdateSchema, type TaskFormValues } from "@/lib/val
 import { notifyWorkspace } from "@/lib/push";
 import { dbError } from "@/lib/db-error";
 
+type TaskActionRow = {
+  id: string;
+  title: string;
+  description: string | null;
+  due_date: string | null;
+  priority: string;
+  status: string;
+  project_id: string | null;
+  client_id: string | null;
+  assigned_to: string | null;
+  metadata: unknown;
+  projects: { title: string } | null;
+  clients: { name: string } | null;
+};
 
-export async function createTaskAction(values: TaskFormValues): Promise<Result<{ id: string }>> {
+const TASK_SELECT = `
+  id,
+  title,
+  description,
+  due_date,
+  priority,
+  status,
+  project_id,
+  client_id,
+  assigned_to,
+  metadata,
+  projects!tasks_project_id_fkey(title),
+  clients!tasks_client_id_fkey(name)
+`;
+
+function revalidateTaskSurfaces(...relations: Array<{ project_id?: string | null; client_id?: string | null } | null | undefined>) {
+  revalidatePath("/tasks");
+  revalidatePath("/dashboard");
+  revalidatePath("/workload");
+  revalidatePath("/rapports");
+
+  const projectIds = new Set<string>();
+  const clientIds = new Set<string>();
+  for (const relation of relations) {
+    if (relation?.project_id) projectIds.add(relation.project_id);
+    if (relation?.client_id) clientIds.add(relation.client_id);
+  }
+
+  for (const projectId of projectIds) revalidatePath(`/projects/${projectId}`);
+  for (const clientId of clientIds) revalidatePath(`/clients/${clientId}`);
+}
+
+function normalizeTaskRow(row: unknown): TaskActionRow {
+  const task = row as TaskActionRow & {
+    projects?: { title: string } | { title: string }[] | null;
+    clients?: { name: string } | { name: string }[] | null;
+  };
+
+  return {
+    ...task,
+    projects: Array.isArray(task.projects) ? task.projects[0] ?? null : task.projects ?? null,
+    clients: Array.isArray(task.clients) ? task.clients[0] ?? null : task.clients ?? null,
+  };
+}
+
+export async function createTaskAction(values: TaskFormValues): Promise<Result<TaskActionRow>> {
   const parsed = taskFormSchema.safeParse(values);
   if (!parsed.success) return { ok: false, error: "Données invalides." };
 
@@ -39,7 +98,7 @@ export async function createTaskAction(values: TaskFormValues): Promise<Result<{
       priority: parsed.data.priority,
       status: parsed.data.status,
     })
-    .select("id")
+    .select(TASK_SELECT)
     .single();
 
   if (error) return { ok: false, error: dbError(error) };
@@ -61,12 +120,12 @@ export async function createTaskAction(values: TaskFormValues): Promise<Result<{
     }, { userId: parsed.data.assignedTo });
   }
 
-  revalidatePath("/tasks");
-  revalidatePath("/dashboard");
-  return { ok: true, data };
+  const normalizedTask = normalizeTaskRow(data);
+  revalidateTaskSurfaces(normalizedTask);
+  return { ok: true, data: normalizedTask };
 }
 
-export async function updateTaskAction(id: string, values: Partial<TaskFormValues>): Promise<Result<void>> {
+export async function updateTaskAction(id: string, values: Partial<TaskFormValues>): Promise<Result<TaskActionRow>> {
   const parsed = taskUpdateSchema.safeParse(values);
   if (!parsed.success) return { ok: false, error: "Données invalides." };
   const has = (key: keyof TaskFormValues) => Object.prototype.hasOwnProperty.call(values, key);
@@ -81,7 +140,23 @@ export async function updateTaskAction(id: string, values: Partial<TaskFormValue
     { table: "workspace_members", id: parsed.data.assignedTo, label: "Assigné" },
   ]);
   if (!relationCheck.ok) return relationCheck;
-  const projectClientCheck = await assertProjectMatchesClient(supabase, workspaceId, parsed.data.projectId, parsed.data.clientId);
+
+  const { data: previousTask, error: previousError } = await supabase
+    .from("tasks")
+    .select("project_id, client_id")
+    .eq("id", id)
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+
+  if (previousError) return { ok: false, error: dbError(previousError) };
+  if (!previousTask) return { ok: false, error: "Tâche introuvable." };
+
+  const projectClientCheck = await assertProjectMatchesClient(
+    supabase,
+    workspaceId,
+    has("projectId") ? parsed.data.projectId : previousTask.project_id ?? undefined,
+    has("clientId") ? parsed.data.clientId : previousTask.client_id ?? undefined
+  );
   if (!projectClientCheck.ok) return projectClientCheck;
 
   const { data: task, error } = await supabase
@@ -99,14 +174,14 @@ export async function updateTaskAction(id: string, values: Partial<TaskFormValue
     })
     .eq("id", id)
     .eq("workspace_id", workspaceId)
-    .select("id")
+    .select(TASK_SELECT)
     .maybeSingle();
 
   if (error) return { ok: false, error: dbError(error) };
   if (!task) return { ok: false, error: "Tâche introuvable." };
-  revalidatePath("/tasks");
-  revalidatePath("/dashboard");
-  return { ok: true, data: undefined };
+  const normalizedTask = normalizeTaskRow(task);
+  revalidateTaskSurfaces(previousTask, normalizedTask);
+  return { ok: true, data: normalizedTask };
 }
 
 export async function deleteTaskAction(id: string): Promise<Result<void>> {
@@ -120,7 +195,7 @@ export async function deleteTaskAction(id: string): Promise<Result<void>> {
     .delete()
     .eq("id", id)
     .eq("workspace_id", workspaceId)
-    .select("id")
+    .select("id, project_id, client_id")
     .maybeSingle();
 
   if (error) return { ok: false, error: dbError(error) };
@@ -132,20 +207,21 @@ export async function deleteTaskAction(id: string): Promise<Result<void>> {
     metadata: { task_id: id },
   });
 
-  revalidatePath("/tasks");
-  revalidatePath("/dashboard");
+  revalidateTaskSurfaces(task);
   return { ok: true, data: undefined };
 }
 
 export async function toggleTaskStatusAction(id: string, currentStatus: string): Promise<Result<void>> {
   const next = currentStatus === "termine" ? "a_faire" : currentStatus === "a_faire" ? "en_cours" : "termine";
-  return updateTaskAction(id, { status: next as TaskFormValues["status"] });
+  const result = await updateTaskAction(id, { status: next as TaskFormValues["status"] });
+  if (!result.ok) return result;
+  return { ok: true, data: undefined };
 }
 
 export async function updateTaskMetadataAction(
   id: string,
   metadata: Record<string, unknown>
-): Promise<Result<void>> {
+): Promise<Result<TaskActionRow>> {
   const supabase = await createClient();
   const context = await requireWorkspaceRole(supabase);
   if (!context.ok) return { ok: false, error: context.error };
@@ -156,10 +232,12 @@ export async function updateTaskMetadataAction(
     .update({ metadata, updated_at: new Date().toISOString() })
     .eq("id", id)
     .eq("workspace_id", workspaceId)
-    .select("id")
+    .select(TASK_SELECT)
     .maybeSingle();
 
   if (error) return { ok: false, error: dbError(error) };
   if (!task) return { ok: false, error: "Tâche introuvable." };
-  return { ok: true, data: undefined };
+  const normalizedTask = normalizeTaskRow(task);
+  revalidateTaskSurfaces(normalizedTask);
+  return { ok: true, data: normalizedTask };
 }

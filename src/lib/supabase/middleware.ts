@@ -2,6 +2,34 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function updateSession(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const isAuthPage =
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/signup") ||
+    pathname.startsWith("/forgot-password");
+  const isLegalPage =
+    pathname === "/mentions-legales" ||
+    pathname === "/terms" ||
+    pathname === "/cgv" ||
+    pathname === "/privacy" ||
+    pathname === "/cookies";
+  const isPublicPage =
+    pathname === "/" ||
+    pathname.startsWith("/share") ||
+    pathname.startsWith("/portal") ||
+    pathname.startsWith("/p/") ||
+    pathname.startsWith("/invite") ||
+    pathname.startsWith("/auth/callback") ||
+    isLegalPage ||
+    pathname === "/manifest.json" ||
+    pathname === "/sw.js";
+  const isApiRoute = pathname.startsWith("/api");
+  const isNextInternal = pathname.startsWith("/_next");
+
+  if (isApiRoute || isPublicPage || isNextInternal) {
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -29,13 +57,7 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
-
-  const isAuthPage = pathname.startsWith("/login") || pathname.startsWith("/signup");
-  const isPublicPage = pathname.startsWith("/share");
-  const isApiRoute = pathname.startsWith("/api");
-
-  if (!user && !isAuthPage && !isPublicPage && !isApiRoute) {
+  if (!user && !isAuthPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
@@ -43,7 +65,7 @@ export async function updateSession(request: NextRequest) {
 
   if (user && isAuthPage) {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = "/dashboard";
     return NextResponse.redirect(url);
   }
 

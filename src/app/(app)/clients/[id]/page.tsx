@@ -4,14 +4,12 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, User, Building2, Phone, Mail, MapPin, Edit, Plus, FileText } from "lucide-react";
-import { formatDate, formatRelative } from "@/lib/format";
-
-const PHASE_LABELS: Record<string, string> = {
-  esquisse: "Esquisse", aps: "APS", apd: "APD", pc: "PC",
-  dce: "DCE", chantier: "Chantier", reception: "Réception", termine: "Terminé",
-};
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ArrowLeft, User, Building2, Phone, Mail, MapPin, Edit, Plus, FileText, Receipt, BadgeDollarSign, TrendingUp, Globe } from "lucide-react";
+import { ClientPortalShare, ArchitectReplyForm } from "@/components/portal/client-portal-actions";
+import { formatDate, formatRelative, formatMAD } from "@/lib/format";
+import { PHASE_LABELS, PHASE_COLORS } from "@/lib/constants";
+import { getWorkspaceId } from "@/lib/workspace";
 
 const CONTRACT_STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
   brouillon: "secondary",
@@ -25,11 +23,30 @@ const CONTRACT_STATUS_LABELS: Record<string, string> = {
   archive: "Archivé",
 };
 
+const DEVIS_STATUS_LABELS: Record<string, string> = {
+  brouillon: "Brouillon", envoye: "Envoyé", accepte: "Accepté", refuse: "Refusé", expire: "Expiré",
+};
+
+const DEVIS_STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
+  brouillon: "secondary", envoye: "outline", accepte: "default", refuse: "destructive", expire: "outline",
+};
+
+const FACTURE_STATUS_LABELS: Record<string, string> = {
+  brouillon: "Brouillon", envoyee: "Envoyée", payee: "Payée", annulee: "Annulée",
+};
+
+const FACTURE_STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
+  brouillon: "secondary", envoyee: "outline", payee: "default", annulee: "destructive",
+};
+
 const ACTION_LABELS: Record<string, string> = {
   "client.created": "Client créé",
   "project.created": "Projet créé",
   "contract.generated": "Contrat généré",
   "file.uploaded": "Fichier déposé",
+  "devis.created": "Devis créé",
+  "facture.created": "Facture créée",
+  "facture.paid": "Facture encaissée",
 };
 
 function activityLabel(action: string, metadata: Record<string, unknown>): string {
@@ -45,31 +62,81 @@ export default async function ClientDetailPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+  const workspaceId = await getWorkspaceId(supabase);
+  if (!workspaceId) notFound();
 
-  const [{ data: client }, { data: projects }, { data: contracts }, { data: activityLog }] =
-    await Promise.all([
-      supabase.from("clients").select("*").eq("id", id).single(),
-      supabase
-        .from("projects")
-        .select("id, title, phase, status, created_at")
+  const [
+    { data: client },
+    { data: projects },
+    { data: contracts },
+    { data: activityLog },
+    { data: devisList },
+    { data: factures },
+    { data: clientPortalLink },
+  ] = await Promise.all([
+    supabase.from("clients").select("*").eq("id", id).eq("workspace_id", workspaceId).single(),
+    supabase
+      .from("projects")
+      .select("id, title, phase, status, created_at")
+      .eq("workspace_id", workspaceId)
+      .eq("client_id", id)
+      .is("archived_at", null)
+      .order("updated_at", { ascending: false }),
+    supabase
+      .from("contracts")
+      .select("id, title, type, status, created_at")
+      .eq("workspace_id", workspaceId)
+      .eq("client_id", id)
+      .neq("status", "archive")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("activity_log")
+      .select("id, action, metadata, created_at")
+      .eq("workspace_id", workspaceId)
+      .eq("client_id", id)
+      .order("created_at", { ascending: false })
+      .limit(20),
+    supabase
+      .from("devis")
+      .select("id, number, title, status, total_centimes, created_at")
+      .eq("workspace_id", workspaceId)
+      .eq("client_id", id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("factures")
+      .select("id, number, title, status, total_centimes, due_date, paid_at, created_at")
+      .eq("workspace_id", workspaceId)
+      .eq("client_id", id)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("share_links")
+      .select("token, accessed_count, last_accessed_at")
+      .eq("workspace_id", workspaceId)
+      .eq("resource_type", "client")
+      .eq("resource_id", id)
+      .is("expires_at", null)
+      .maybeSingle(),
+  ]);
+
+  const { data: portalMessages } = clientPortalLink
+    ? await supabase
+        .from("portal_messages")
+        .select("id, sender, sender_name, body, created_at")
+        .eq("workspace_id", workspaceId)
         .eq("client_id", id)
-        .is("archived_at", null)
-        .order("updated_at", { ascending: false }),
-      supabase
-        .from("contracts")
-        .select("id, title, type, status, created_at")
-        .eq("client_id", id)
-        .neq("status", "archive")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("activity_log")
-        .select("id, action, metadata, created_at")
-        .eq("client_id", id)
-        .order("created_at", { ascending: false })
-        .limit(20),
-    ]);
+        .eq("share_token", clientPortalLink.token)
+        .order("created_at", { ascending: true })
+    : { data: [] };
 
   if (!client) notFound();
+
+  // Financial summary
+  const totalDevis = (devisList ?? []).filter((d) => d.status === "accepte").reduce((s, d) => s + d.total_centimes, 0);
+  const totalInvoiced = (factures ?? []).filter((f) => f.status !== "annulee").reduce((s, f) => s + f.total_centimes, 0);
+  const totalPaid = (factures ?? []).filter((f) => f.status === "payee").reduce((s, f) => s + f.total_centimes, 0);
+  const totalOutstanding = (factures ?? []).filter((f) => f.status === "envoyee").reduce((s, f) => s + f.total_centimes, 0);
+
+  const hasFinancials = totalInvoiced > 0 || totalDevis > 0;
 
   return (
     <div className="space-y-6">
@@ -122,6 +189,38 @@ export default async function ClientDetailPage({
         )}
       </div>
 
+      {/* Financial summary */}
+      {hasFinancials && (
+        <Card className="border-blue-100 bg-blue-50/30">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm text-blue-800">
+              <TrendingUp className="h-4 w-4 text-blue-500" />
+              Résumé financier
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-0">
+            <div>
+              <p className="text-xs text-muted-foreground">Devis acceptés</p>
+              <p className="text-lg font-bold">{totalDevis > 0 ? formatMAD(totalDevis) : "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Facturé</p>
+              <p className="text-lg font-bold">{totalInvoiced > 0 ? formatMAD(totalInvoiced) : "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Encaissé</p>
+              <p className="text-lg font-bold text-green-700">{totalPaid > 0 ? formatMAD(totalPaid) : "—"}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">En attente</p>
+              <p className={`text-lg font-bold ${totalOutstanding > 0 ? "text-amber-700" : ""}`}>
+                {totalOutstanding > 0 ? formatMAD(totalOutstanding) : "—"}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Tabs defaultValue="projects">
         <TabsList>
           <TabsTrigger value="projects">
@@ -130,8 +229,19 @@ export default async function ClientDetailPage({
           <TabsTrigger value="contracts">
             Contrats {contracts && contracts.length > 0 ? `(${contracts.length})` : ""}
           </TabsTrigger>
+          <TabsTrigger value="devis">
+            Devis {devisList && devisList.length > 0 ? `(${devisList.length})` : ""}
+          </TabsTrigger>
+          <TabsTrigger value="factures">
+            Factures {factures && factures.length > 0 ? `(${factures.length})` : ""}
+          </TabsTrigger>
           <TabsTrigger value="activity">Activité</TabsTrigger>
           <TabsTrigger value="info">Informations</TabsTrigger>
+          <TabsTrigger value="portal" className="flex items-center gap-1.5">
+            <Globe className="h-3.5 w-3.5" />
+            Portail
+            {clientPortalLink && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="projects" className="mt-4">
@@ -155,10 +265,9 @@ export default async function ClientDetailPage({
                         {formatDate(project.created_at)}
                       </p>
                     </div>
-                    <div className="flex gap-2">
-                      <Badge variant="outline" className="text-xs">{PHASE_LABELS[project.phase] ?? project.phase}</Badge>
-                      <Badge variant="secondary" className="text-xs">{project.status}</Badge>
-                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PHASE_COLORS[project.phase] ?? "bg-gray-100 text-gray-700"}`}>
+                      {PHASE_LABELS[project.phase] ?? project.phase}
+                    </span>
                   </div>
                 </Link>
               ))}
@@ -215,6 +324,96 @@ export default async function ClientDetailPage({
           )}
         </TabsContent>
 
+        <TabsContent value="devis" className="mt-4">
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-sm text-muted-foreground">Devis émis pour ce client</p>
+            <Link href={`/devis/new?clientId=${id}`}>
+              <Button size="sm" variant="outline">
+                <Plus className="h-4 w-4 mr-2" />
+                Nouveau devis
+              </Button>
+            </Link>
+          </div>
+          {devisList && devisList.length > 0 ? (
+            <div className="space-y-2">
+              {devisList.map((d) => (
+                <Link key={d.id} href={`/devis/${d.id}`}>
+                  <div className="bg-white border rounded-lg p-3 flex items-center justify-between text-sm hover:shadow-sm transition-shadow">
+                    <div className="flex items-center gap-3">
+                      <Receipt className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div>
+                        <p className="font-medium">{d.number} — {d.title}</p>
+                        <p className="text-xs text-muted-foreground">{formatDate(d.created_at)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{formatMAD(d.total_centimes)}</span>
+                      <Badge variant={DEVIS_STATUS_VARIANT[d.status] ?? "secondary"} className="text-xs">
+                        {DEVIS_STATUS_LABELS[d.status] ?? d.status}
+                      </Badge>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-10 text-muted-foreground">
+              <p className="text-sm">Aucun devis pour ce client.</p>
+              <Link href={`/devis/new?clientId=${id}`}>
+                <Button variant="outline" size="sm" className="mt-3">Créer un devis</Button>
+              </Link>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="factures" className="mt-4">
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-sm text-muted-foreground">Factures émises pour ce client</p>
+            <Link href={`/factures/new?clientId=${id}`}>
+              <Button size="sm" variant="outline">
+                <Plus className="h-4 w-4 mr-2" />
+                Nouvelle facture
+              </Button>
+            </Link>
+          </div>
+          {factures && factures.length > 0 ? (
+            <div className="space-y-2">
+              {factures.map((f) => {
+                const isOverdue = f.status === "envoyee" && f.due_date && new Date(f.due_date) < new Date();
+                return (
+                  <Link key={f.id} href={`/factures/${f.id}`}>
+                    <div className="bg-white border rounded-lg p-3 flex items-center justify-between text-sm hover:shadow-sm transition-shadow">
+                      <div className="flex items-center gap-3">
+                        <BadgeDollarSign className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <div>
+                          <p className="font-medium">{f.number} — {f.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDate(f.created_at)}
+                            {isOverdue && <span className="ml-2 text-red-600 font-medium">En retard</span>}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{formatMAD(f.total_centimes)}</span>
+                        <Badge variant={FACTURE_STATUS_VARIANT[f.status] ?? "secondary"} className="text-xs">
+                          {FACTURE_STATUS_LABELS[f.status] ?? f.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-10 text-muted-foreground">
+              <p className="text-sm">Aucune facture pour ce client.</p>
+              <Link href={`/factures/new?clientId=${id}`}>
+                <Button variant="outline" size="sm" className="mt-3">Créer une facture</Button>
+              </Link>
+            </div>
+          )}
+        </TabsContent>
+
         <TabsContent value="activity" className="mt-4">
           {activityLog && activityLog.length > 0 ? (
             <ul className="space-y-3">
@@ -236,6 +435,44 @@ export default async function ClientDetailPage({
             <p className="text-sm text-muted-foreground text-center py-10">
               Aucune activité enregistrée pour ce client.
             </p>
+          )}
+        </TabsContent>
+
+        <TabsContent value="portal" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Globe className="h-4 w-4 text-muted-foreground" />
+                Portail client
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Partagez un lien sécurisé donnant accès au dossier complet : projets, contrats, devis, factures, comptes-rendus et historique de collaboration.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <ClientPortalShare
+                clientId={id}
+                existingUrl={clientPortalLink ? `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/portal/client/${clientPortalLink.token}` : null}
+                lastAccessedAt={clientPortalLink?.last_accessed_at ?? null}
+                accessCount={clientPortalLink?.accessed_count ?? 0}
+              />
+            </CardContent>
+          </Card>
+
+          {clientPortalLink && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Discussion avec le client</CardTitle>
+                <p className="text-sm text-muted-foreground">Messages échangés via le portail client.</p>
+              </CardHeader>
+              <CardContent>
+                <ArchitectReplyForm
+                  clientId={id}
+                  messages={portalMessages ?? []}
+                  firmName={null}
+                />
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
 

@@ -12,6 +12,11 @@ import { assertProjectAvailable, assertStorageAvailable } from "@/lib/billing/gu
 import { validateImageUpload } from "@/lib/storage/upload-validation";
 import { dbError } from "@/lib/db-error";
 
+interface PhaseBudgetInput {
+  phase: string;
+  plannedHours?: number;
+  plannedBudgetCentimes?: number;
+}
 
 export async function createProjectAction(values: ProjectFormValues): Promise<Result<{ id: string }>> {
   const parsed = projectSchema.safeParse(values);
@@ -159,6 +164,60 @@ export async function updateProjectChecklistAction(
 
   if (error) return { ok: false, error: dbError(error) };
   if (!updatedProject) return { ok: false, error: "Projet introuvable." };
+  revalidatePath(`/projects/${id}`);
+  return { ok: true, data: undefined };
+}
+
+export async function updateProjectPhaseBudgetsAction(
+  id: string,
+  budgets: PhaseBudgetInput[]
+): Promise<Result<void>> {
+  const supabase = await createClient();
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("metadata")
+    .eq("id", id)
+    .eq("workspace_id", workspaceId)
+    .single();
+
+  if (!project) return { ok: false, error: "Projet introuvable." };
+
+  const normalized = budgets.reduce<Record<string, { plannedHours: number; plannedBudgetCentimes: number }>>((acc, budget) => {
+    if (!budget.phase) return acc;
+    const plannedHours = Math.max(0, Number.isFinite(budget.plannedHours) ? Math.round((budget.plannedHours ?? 0) * 100) / 100 : 0);
+    const plannedBudgetCentimes = Math.max(0, Math.round(budget.plannedBudgetCentimes ?? 0));
+    if (plannedHours > 0 || plannedBudgetCentimes > 0) {
+      acc[budget.phase] = { plannedHours, plannedBudgetCentimes };
+    }
+    return acc;
+  }, {});
+
+  const metadata = (project.metadata as Record<string, unknown>) ?? {};
+  const { data: updatedProject, error } = await supabase
+    .from("projects")
+    .update({
+      metadata: { ...metadata, phase_budgets: normalized },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("workspace_id", workspaceId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) return { ok: false, error: dbError(error) };
+  if (!updatedProject) return { ok: false, error: "Projet introuvable." };
+
+  await supabase.from("activity_log").insert({
+    workspace_id: workspaceId,
+    project_id: id,
+    action: "project.phase_budgets_updated",
+    metadata: { phases: Object.keys(normalized).length },
+  });
+
   revalidatePath(`/projects/${id}`);
   return { ok: true, data: undefined };
 }

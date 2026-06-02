@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { formatFileSize } from "@/lib/format";
 import { Download, Building2, FileText, FileImage, File } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { requireWorkspaceAccountActive } from "@/lib/workspace";
 
 const STORAGE_BUCKET = "project-files";
 
@@ -39,6 +40,9 @@ export default async function SharePage({
     );
   }
 
+  const workspaceStatus = await requireWorkspaceAccountActive(supabase, shareLink.workspace_id);
+  if (!workspaceStatus.ok) notFound();
+
   // Track access
   await supabase
     .from("share_links")
@@ -57,6 +61,7 @@ export default async function SharePage({
       .from("files")
       .select("filename, size_bytes, mime_type, storage_path, workspace_id")
       .eq("id", shareLink.resource_id)
+      .eq("workspace_id", shareLink.workspace_id)
       .single();
 
     if (file) {

@@ -8,6 +8,7 @@ export interface PlanLimits {
   storageGb: number;
   aiCalls: number;
   aiEnabled: boolean;
+  lemonSqueezyVariantEnv?: string;
 }
 
 export const PLAN_LIMITS: Record<WorkspacePlan, PlanLimits> = {
@@ -28,6 +29,7 @@ export const PLAN_LIMITS: Record<WorkspacePlan, PlanLimits> = {
     storageGb: 50,
     aiCalls: 100,
     aiEnabled: true,
+    lemonSqueezyVariantEnv: "LEMON_SQUEEZY_STUDIO_VARIANT_ID",
   },
   agence: {
     label: "Agence AI",
@@ -37,6 +39,7 @@ export const PLAN_LIMITS: Record<WorkspacePlan, PlanLimits> = {
     storageGb: 200,
     aiCalls: 300,
     aiEnabled: true,
+    lemonSqueezyVariantEnv: "LEMON_SQUEEZY_AGENCE_VARIANT_ID",
   },
 };
 

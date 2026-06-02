@@ -4,6 +4,7 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { ContractPdf } from "@/lib/pdf/contract-template";
 import React from "react";
 import type { DocumentProps } from "@react-pdf/renderer";
+import { requireActiveWorkspace } from "@/lib/workspace";
 
 export async function GET(
   _req: NextRequest,
@@ -14,29 +15,23 @@ export async function GET(
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
+  const workspace = await requireActiveWorkspace(supabase, user.id);
+  if (!workspace.ok) return NextResponse.json({ error: workspace.error }, { status: 403 });
+  const { workspaceId } = workspace.data;
 
   const { data: contract } = await supabase
     .from("contracts")
     .select("*")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (!contract) return NextResponse.json({ error: "Contrat introuvable." }, { status: 404 });
 
-  const { data: workspace } = await supabase
-    .from("workspaces")
-    .select("id")
-    .eq("owner_id", user.id)
-    .single();
-
-  if (!workspace || contract.workspace_id !== workspace.id) {
-    return NextResponse.json({ error: "Accès refusé." }, { status: 403 });
-  }
-
   const { data: firm } = await supabase
     .from("firm_profile")
     .select("firm_name, architect_name, address, phone, email, ice, rc")
-    .eq("workspace_id", workspace.id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   const content = contract.content_json as { title: string; sections: { heading: string; body: string }[] } | null;

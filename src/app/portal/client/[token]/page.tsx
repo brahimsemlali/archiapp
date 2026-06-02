@@ -147,8 +147,8 @@ export default async function ClientPortalPage({
 
   const [{ data: siteVisits }, { data: meetingNotes }, { data: sharedFiles }] = await Promise.all([
     projectIds.length > 0
-      ? supabase.from("site_visits").select("id, title, visit_date, weather, attendees, summary, project_id").eq("workspace_id", workspaceId).in("project_id", projectIds).not("summary", "is", null).order("visit_date", { ascending: false })
-      : { data: [] as { id: string; title: string; visit_date: string; weather: string | null; attendees: string[] | null; summary: string | null; project_id: string }[] },
+      ? supabase.from("site_visits").select("id, title, visit_date, weather, attendees, summary, observations, project_id").eq("workspace_id", workspaceId).in("project_id", projectIds).not("summary", "is", null).order("visit_date", { ascending: false })
+      : { data: [] as { id: string; title: string; visit_date: string; weather: string | null; attendees: string[] | null; summary: string | null; observations: unknown; project_id: string }[] },
     projectIds.length > 0
       ? supabase.from("meeting_notes").select("id, title, meeting_date, meeting_type, attendees, summary, decisions, project_id, pv_signed_at, pv_signer_name").eq("workspace_id", workspaceId).in("project_id", projectIds).order("meeting_date", { ascending: false })
       : { data: [] as { id: string; title: string; meeting_date: string; meeting_type: string | null; attendees: unknown; summary: string | null; decisions: unknown[]; project_id: string; pv_signed_at: string | null; pv_signer_name: string | null }[] },
@@ -166,6 +166,23 @@ export default async function ClientPortalPage({
     })
   );
 
+  // Generate signed URLs for site visit observation photos
+  type ObsWithUrl = { zone?: string; description: string; photoUrl?: string; signedPhotoUrl?: string };
+  const visitsWithPhotos = await Promise.all(
+    (siteVisits ?? []).map(async (visit) => {
+      const obs = Array.isArray(visit.observations) ? (visit.observations as ObsWithUrl[]) : [];
+      const photosWithUrls = await Promise.all(
+        obs.map(async (o) => {
+          if (!o.photoUrl) return { ...o, signedPhotoUrl: undefined };
+          if (o.photoUrl.startsWith("http")) return { ...o, signedPhotoUrl: o.photoUrl };
+          const { data } = await supabase.storage.from("project-files").createSignedUrl(o.photoUrl, 3600);
+          return { ...o, signedPhotoUrl: data?.signedUrl ?? undefined };
+        })
+      );
+      return { ...visit, photosWithUrls };
+    })
+  );
+
   const contractIds = (contracts ?? []).map((c) => c.id);
   const { data: signatures } = contractIds.length > 0
     ? await supabase.from("signatures").select("id, contract_id, signer_name, signed_at").in("contract_id", contractIds)
@@ -178,9 +195,10 @@ export default async function ClientPortalPage({
 
   const projectById = Object.fromEntries((projects ?? []).map((p) => [p.id, p]));
 
-  const totalDevis = (devisList ?? []).filter((d) => d.status === "accepte").reduce((s, d) => s + d.total_centimes, 0);
+  const totalFees = (projects ?? []).reduce((s, p) => s + (p.fees_centimes ?? 0), 0);
   const totalPaid = (facturesList ?? []).filter((f) => f.status === "payee").reduce((s, f) => s + f.total_centimes, 0);
   const totalPending = (facturesList ?? []).filter((f) => f.status === "envoyee").reduce((s, f) => s + f.total_centimes, 0);
+  const totalRemaining = Math.max(0, totalFees - totalPaid);
 
   // Action required items
   const pendingDevis = (devisList ?? []).filter((d) => d.status === "envoye");
@@ -203,15 +221,15 @@ export default async function ClientPortalPage({
   ].filter((n) => n.show);
 
   return (
-    <div className="min-h-screen bg-[#F7F6F3]">
+    <div className="client-portal-shell min-h-screen">
       {/* Firm header */}
-      <header className="bg-white border-b sticky top-0 z-20 shadow-sm">
+      <header className="sticky top-0 z-20 border-b border-[#E8E6DF]/90 bg-white/84 shadow-[0_10px_32px_rgba(22,23,14,0.06)] backdrop-blur-xl">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             {firmProfile?.logo_url ? (
-              <Image src={firmProfile.logo_url} alt={firmProfile.firm_name ?? "Logo"} width={36} height={36} className="rounded object-contain" />
+              <Image src={firmProfile.logo_url} alt={firmProfile.firm_name ?? "Logo"} width={40} height={40} className="rounded-xl object-contain ring-1 ring-[#E8E6DF]" />
             ) : (
-              <div className="h-9 w-9 rounded-lg bg-gray-900 flex items-center justify-center shrink-0">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-[#16170E] via-[#2A45F0] to-[#2F8F5C] flex items-center justify-center shrink-0 shadow-[0_12px_28px_rgba(42,69,240,0.22)]">
                 <Building2 className="h-4 w-4 text-white" />
               </div>
             )}
@@ -220,20 +238,20 @@ export default async function ClientPortalPage({
               {firmProfile?.architect_name && <p className="text-xs text-gray-400">{firmProfile.architect_name}</p>}
             </div>
           </div>
-          <span className="text-[11px] font-medium text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full">Espace client</span>
+          <span className="rounded-full border border-[#E8E6DF] bg-[#F7F7F4]/90 px-2.5 py-1 text-[11px] font-semibold text-[#6B6B5A]">Espace client</span>
         </div>
       </header>
 
       {/* Section nav */}
       {navItems.length > 1 && (
-        <nav className="bg-white border-b sticky top-[57px] z-10">
+        <nav className="sticky top-[65px] z-10 border-b border-[#E8E6DF]/80 bg-white/76 backdrop-blur-xl">
           <div className="max-w-3xl mx-auto px-4">
             <div className="flex gap-1 overflow-x-auto py-2 scrollbar-hide">
               {navItems.map((item) => (
                 <a
                   key={item.id}
                   href={`#${item.id}`}
-                  className="shrink-0 text-xs font-medium text-gray-500 hover:text-gray-900 px-3 py-1.5 rounded-full hover:bg-gray-100 transition-colors"
+                  className="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold text-[#6B6B5A] transition-colors hover:bg-[#F2F2EE] hover:text-[#16170E]"
                 >
                   {item.label}
                 </a>
@@ -245,30 +263,39 @@ export default async function ClientPortalPage({
 
       <main className="max-w-3xl mx-auto px-4 py-6 space-y-5">
         {/* Client hero */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-          <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Votre dossier</p>
-          <h1 className="text-2xl font-bold text-gray-900 mb-3">{client.name}</h1>
-          {(totalDevis > 0 || totalPaid > 0 || totalPending > 0) && (
-            <div className="flex flex-wrap gap-3">
-              {totalDevis > 0 && (
-                <div className="flex items-center gap-1.5 text-sm">
-                  <span className="h-2 w-2 rounded-full bg-blue-400" />
-                  <span className="text-gray-500">Devis acceptés</span>
-                  <span className="font-semibold text-gray-800">{formatMAD(totalDevis)}</span>
+        <div className="client-portal-card relative overflow-hidden rounded-3xl p-5 sm:p-6">
+          <div className="absolute -right-12 -top-16 h-36 w-36 rounded-full border border-[#2A45F0]/15 bg-[#E7F0FF]/50" />
+          <div className="relative">
+            <p className="eyebrow mb-1">Votre dossier</p>
+            <h1 className="page-title text-3xl text-[#16170E]">{client.name}</h1>
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-[#6B6B5A]">
+              Avancement, documents, validations et échanges avec votre cabinet.
+            </p>
+          </div>
+          {(totalFees > 0 || totalPaid > 0 || totalPending > 0) && (
+            <div className="relative mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {totalFees > 0 && (
+                <div className="rounded-2xl border border-[#E8E6DF] bg-white/78 px-3 py-2.5 shadow-sm">
+                  <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Honoraires</p>
+                  <p className="text-sm font-bold text-gray-800">{formatMAD(totalFees)}</p>
                 </div>
               )}
               {totalPaid > 0 && (
-                <div className="flex items-center gap-1.5 text-sm">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                  <span className="text-gray-500">Encaissé</span>
-                  <span className="font-semibold text-emerald-700">{formatMAD(totalPaid)}</span>
+                <div className="rounded-2xl bg-emerald-50 border border-emerald-100 px-3 py-2.5 shadow-sm">
+                  <p className="text-[10px] text-emerald-600 uppercase tracking-wide mb-0.5">Réglé</p>
+                  <p className="text-sm font-bold text-emerald-700">{formatMAD(totalPaid)}</p>
                 </div>
               )}
               {totalPending > 0 && (
-                <div className="flex items-center gap-1.5 text-sm">
-                  <span className="h-2 w-2 rounded-full bg-amber-400" />
-                  <span className="text-gray-500">En attente</span>
-                  <span className="font-semibold text-amber-700">{formatMAD(totalPending)}</span>
+                <div className="rounded-2xl bg-amber-50 border border-amber-100 px-3 py-2.5 shadow-sm">
+                  <p className="text-[10px] text-amber-600 uppercase tracking-wide mb-0.5">En attente</p>
+                  <p className="text-sm font-bold text-amber-700">{formatMAD(totalPending)}</p>
+                </div>
+              )}
+              {totalFees > 0 && totalRemaining > 0 && (
+                <div className="rounded-2xl bg-blue-50 border border-blue-100 px-3 py-2.5 shadow-sm">
+                  <p className="text-[10px] text-blue-600 uppercase tracking-wide mb-0.5">Solde restant</p>
+                  <p className="text-sm font-bold text-blue-700">{formatMAD(totalRemaining)}</p>
                 </div>
               )}
             </div>
@@ -640,25 +667,38 @@ export default async function ClientPortalPage({
                     )}
                   </div>
                 ))}
-                {(siteVisits ?? []).map((visit) => (
-                  <div key={visit.id} className="p-5">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">{visit.title}</p>
-                        <p className="text-xs text-gray-400">
-                          Visite chantier · {formatDate(visit.visit_date)}
-                          {visit.weather && ` · ${visit.weather}`}
-                          {projectById[visit.project_id] && ` · ${projectById[visit.project_id]!.title}`}
-                        </p>
+                {visitsWithPhotos.map((visit) => {
+                  const visitPhotos = visit.photosWithUrls.filter((o) => o.signedPhotoUrl);
+                  return (
+                    <div key={visit.id} className="p-5">
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">{visit.title}</p>
+                          <p className="text-xs text-gray-400">
+                            Visite chantier · {formatDate(visit.visit_date)}
+                            {visit.weather && ` · ${visit.weather}`}
+                            {projectById[visit.project_id] && ` · ${projectById[visit.project_id]!.title}`}
+                          </p>
+                        </div>
+                        <span className="shrink-0 text-[10px] bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide">Chantier</span>
                       </div>
-                      <span className="shrink-0 text-[10px] bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide">Chantier</span>
+                      {visit.summary && <p className="text-sm text-gray-600 leading-relaxed">{visit.summary}</p>}
+                      {visit.attendees && visit.attendees.length > 0 && (
+                        <p className="mt-2 text-xs text-gray-400">Présents : {visit.attendees.join(", ")}</p>
+                      )}
+                      {visitPhotos.length > 0 && (
+                        <div className="mt-3 grid grid-cols-3 gap-1.5">
+                          {visitPhotos.map((o, i) => (
+                            <a key={i} href={o.signedPhotoUrl} target="_blank" rel="noopener noreferrer" className="rounded-lg overflow-hidden bg-gray-100 aspect-square block">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={o.signedPhotoUrl} alt={o.zone ?? o.description ?? ""} className="w-full h-full object-cover" />
+                            </a>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    {visit.summary && <p className="text-sm text-gray-600 leading-relaxed">{visit.summary}</p>}
-                    {visit.attendees && visit.attendees.length > 0 && (
-                      <p className="mt-2 text-xs text-gray-400">Présents : {visit.attendees.join(", ")}</p>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </section>

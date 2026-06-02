@@ -1,11 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
 import { ArrowLeft } from "lucide-react";
-import { formatDate, formatMAD } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { DevisDetail } from "@/components/devis/devis-detail";
 import type { DevisItem } from "@/lib/validators/devis";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export default async function DevisDetailPage({
   params,
@@ -14,11 +14,14 @@ export default async function DevisDetailPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+  const workspaceId = await getWorkspaceId(supabase);
+  if (!workspaceId) notFound();
 
   const { data: devis } = await supabase
     .from("devis")
-    .select("*, clients(id, name, address, ice, cin), projects(id, title)")
+    .select("*, clients!devis_client_id_fkey(id, name, address, ice, cin), projects!devis_project_id_fkey(id, title)")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (!devis) notFound();
@@ -26,7 +29,7 @@ export default async function DevisDetailPage({
   const { data: firmProfile } = await supabase
     .from("firm_profile")
     .select("*")
-    .eq("workspace_id", devis.workspace_id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   const client = devis.clients as { id: string; name: string; address?: string; ice?: string; cin?: string } | null;

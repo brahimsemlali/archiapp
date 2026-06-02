@@ -13,7 +13,17 @@ export interface TemplateValues {
   content: Record<string, unknown>;
 }
 
-export async function createTemplateAction(values: TemplateValues): Promise<Result<{ id: string }>> {
+export interface TemplateRow {
+  id: string;
+  type: string;
+  name: string;
+  description: string | null;
+  content: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function createTemplateAction(values: TemplateValues): Promise<Result<TemplateRow>> {
   if (!values.name?.trim()) return { ok: false, error: "Nom requis." };
   const supabase = await createClient();
   const context = await requireWorkspaceRole(supabase);
@@ -26,11 +36,11 @@ export async function createTemplateAction(values: TemplateValues): Promise<Resu
     name: values.name.trim(),
     description: values.description?.trim() || null,
     content: values.content,
-  }).select("id").single();
+  }).select("id, type, name, description, content, created_at, updated_at").single();
 
   if (error) return { ok: false, error: dbError(error) };
   revalidatePath("/templates");
-  return { ok: true, data: { id: data.id } };
+  return { ok: true, data };
 }
 
 export async function updateTemplateAction(id: string, values: Partial<TemplateValues>): Promise<Result<void>> {

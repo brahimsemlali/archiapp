@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -15,20 +15,30 @@ import { useTranslations } from "next-intl";
 export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [accepted, setAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
   const t = useTranslations("auth");
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
+    if (!accepted) {
+      toast.error(t("acceptRequired"));
+      return;
+    }
     setLoading(true);
+
+    const invite = searchParams.get("invite");
+    const callbackUrl = new URL("/auth/callback", window.location.origin);
+    if (invite) callbackUrl.searchParams.set("invite", invite);
 
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: callbackUrl.href,
       },
     });
 
@@ -39,7 +49,7 @@ export default function SignupPage() {
     }
 
     toast.success("Compte créé ! Vérifiez votre email pour confirmer.");
-    router.push("/login");
+    router.push(invite ? `/login?invite=${invite}` : "/login");
   }
 
   return (
@@ -77,7 +87,31 @@ export default function SignupPage() {
                 autoComplete="new-password"
               />
             </div>
-            <Button type="submit" className="w-full" disabled={loading}>
+            <label className="flex items-start gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={accepted}
+                onChange={(e) => setAccepted(e.target.checked)}
+                required
+                className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+              />
+              <span>
+                {t.rich("acceptTerms", {
+                  terms: (chunks) => (
+                    <Link href="/terms" target="_blank" className="text-primary hover:underline font-medium">
+                      {chunks}
+                    </Link>
+                  ),
+                  privacy: (chunks) => (
+                    <Link href="/privacy" target="_blank" className="text-primary hover:underline font-medium">
+                      {chunks}
+                    </Link>
+                  ),
+                })}
+              </span>
+            </label>
+
+            <Button type="submit" className="w-full" disabled={loading || !accepted}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {t("signup")}
             </Button>

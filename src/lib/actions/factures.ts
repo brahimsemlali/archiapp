@@ -8,6 +8,7 @@ import { factureFormSchema, type FactureFormValues } from "@/lib/validators/fact
 import { sendEmail } from "@/lib/email/send";
 import { factureSentEmail, APP_URL } from "@/lib/email/templates";
 import { formatMAD, formatDate } from "@/lib/format";
+import { computeDocumentTotals } from "@/lib/totals";
 import { dbError } from "@/lib/db-error";
 
 
@@ -26,9 +27,7 @@ async function nextFactureNumber(supabase: Awaited<ReturnType<typeof createClien
 }
 
 function computeTotals(items: FactureFormValues["items"], tvaRate: number) {
-  const subtotal = items.reduce((sum, item) => sum + Math.round(item.quantity * item.unitPriceCentimes), 0);
-  const tva = Math.round(subtotal * tvaRate / 100);
-  return { subtotalCentimes: subtotal, tvaCentimes: tva, totalCentimes: subtotal + tva };
+  return computeDocumentTotals(items, tvaRate);
 }
 
 async function createSentInvoiceSnapshot(

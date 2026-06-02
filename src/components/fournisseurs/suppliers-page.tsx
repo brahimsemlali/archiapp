@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { formatMAD } from "@/lib/format";
 import { displayExternalUrl, normalizeExternalUrl } from "@/lib/url";
@@ -33,9 +32,14 @@ interface Props { initialSuppliers: Supplier[]; initialItems: CatalogItem[] }
 
 export function SuppliersPage({ initialSuppliers, initialItems }: Props) {
   const t = useTranslations("common");
-  const router = useRouter();
-  const [suppliers, setSuppliers] = useState(initialSuppliers);
-  const [items, setItems] = useState(initialItems);
+  const [supplierSnapshot, setSupplierSnapshot] = useState({
+    source: initialSuppliers,
+    suppliers: initialSuppliers,
+  });
+  const [itemSnapshot, setItemSnapshot] = useState({
+    source: initialItems,
+    items: initialItems,
+  });
   const [search, setSearch] = useState("");
   const [supplierOpen, setSupplierOpen] = useState(false);
   const [itemOpen, setItemOpen] = useState(false);
@@ -44,6 +48,28 @@ export function SuppliersPage({ initialSuppliers, initialItems }: Props) {
   const [saving, setSaving] = useState(false);
   const [sForm, setSForm] = useState<SupplierValues>({ name: "" });
   const [iForm, setIForm] = useState<CatalogItemValues>({ name: "", unit: "m²", unitPriceCentimes: 0 });
+
+  if (supplierSnapshot.source !== initialSuppliers) {
+    setSupplierSnapshot({ source: initialSuppliers, suppliers: initialSuppliers });
+  }
+  if (itemSnapshot.source !== initialItems) {
+    setItemSnapshot({ source: initialItems, items: initialItems });
+  }
+
+  const suppliers = supplierSnapshot.suppliers;
+  const items = itemSnapshot.items;
+  const setSuppliers = (update: Supplier[] | ((currentSuppliers: Supplier[]) => Supplier[])) => {
+    setSupplierSnapshot((current) => ({
+      source: current.source,
+      suppliers: typeof update === "function" ? update(current.suppliers) : update,
+    }));
+  };
+  const setItems = (update: CatalogItem[] | ((currentItems: CatalogItem[]) => CatalogItem[])) => {
+    setItemSnapshot((current) => ({
+      source: current.source,
+      items: typeof update === "function" ? update(current.items) : update,
+    }));
+  };
 
   const filteredSuppliers = suppliers.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()) || (s.category ?? "").toLowerCase().includes(search.toLowerCase()));
   const filteredItems = items.filter((i) => i.name.toLowerCase().includes(search.toLowerCase()) || (i.suppliers?.name ?? "").toLowerCase().includes(search.toLowerCase()));
@@ -59,7 +85,7 @@ export function SuppliersPage({ initialSuppliers, initialItems }: Props) {
     } else {
       const r = await createSupplierAction(sForm);
       if (!r.ok) { toast.error(r.error); setSaving(false); return; }
-      router.refresh();
+      setSuppliers((prev) => [...prev, r.data].sort((a, b) => a.name.localeCompare(b.name)));
       toast.success("Fournisseur créé.");
     }
     setSaving(false);
@@ -77,7 +103,7 @@ export function SuppliersPage({ initialSuppliers, initialItems }: Props) {
     } else {
       const r = await createCatalogItemAction(iForm);
       if (!r.ok) { toast.error(r.error); setSaving(false); return; }
-      router.refresh();
+      setItems((prev) => [...prev, r.data].sort((a, b) => a.name.localeCompare(b.name)));
       toast.success("Article créé.");
     }
     setSaving(false);
@@ -85,14 +111,18 @@ export function SuppliersPage({ initialSuppliers, initialItems }: Props) {
   }
 
   async function delSupplier(id: string) {
-    setSuppliers((p) => p.filter((s) => s.id !== id));
-    await deleteSupplierAction(id);
+    const previous = suppliers;
+    setSuppliers((prev) => prev.filter((s) => s.id !== id));
+    const result = await deleteSupplierAction(id);
+    if (!result.ok) { setSuppliers(previous); toast.error(result.error); return; }
     toast.success("Fournisseur supprimé.");
   }
 
   async function delItem(id: string) {
-    setItems((p) => p.filter((i) => i.id !== id));
-    await deleteCatalogItemAction(id);
+    const previous = items;
+    setItems((prev) => prev.filter((i) => i.id !== id));
+    const result = await deleteCatalogItemAction(id);
+    if (!result.ok) { setItems(previous); toast.error(result.error); return; }
     toast.success("Article supprimé.");
   }
 
@@ -100,15 +130,15 @@ export function SuppliersPage({ initialSuppliers, initialItems }: Props) {
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#82806F]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#64748B]" />
           <Input className="pl-9" placeholder="Rechercher…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
       </div>
 
       <Tabs defaultValue="fournisseurs">
-        <TabsList className="h-9 bg-[#F2F2EE] border border-[#E8E6DF] p-0.5 rounded-lg">
-          <TabsTrigger value="fournisseurs" className="text-[13px] rounded-md data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:text-[#16170E] text-[#82806F]">Fournisseurs ({suppliers.length})</TabsTrigger>
-          <TabsTrigger value="catalogue" className="text-[13px] rounded-md data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:text-[#16170E] text-[#82806F]">Catalogue prix ({items.length})</TabsTrigger>
+        <TabsList className="h-9 bg-[#F1F5F9] border border-[#E5E7EB] p-0.5 rounded-lg">
+          <TabsTrigger value="fournisseurs" className="text-[13px] rounded-md data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:text-[#0B1220] text-[#64748B]">Fournisseurs ({suppliers.length})</TabsTrigger>
+          <TabsTrigger value="catalogue" className="text-[13px] rounded-md data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:text-[#0B1220] text-[#64748B]">Catalogue prix ({items.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="fournisseurs" className="mt-4 space-y-3">
@@ -117,48 +147,48 @@ export function SuppliersPage({ initialSuppliers, initialItems }: Props) {
           </Button>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {filteredSuppliers.map((s) => (
-              <div key={s.id} className="bg-white border border-[#E8E6DF] rounded-xl p-4 space-y-2 hover:shadow-sm transition-shadow">
+              <div key={s.id} className="bg-white border border-[#E5E7EB] rounded-xl p-4 space-y-2 hover:shadow-sm transition-shadow">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="font-semibold text-[#16170E]">{s.name}</p>
+                    <p className="font-semibold text-[#0B1220]">{s.name}</p>
                     {s.category && <Badge variant="outline" className="text-[10px] mt-0.5 capitalize">{s.category}</Badge>}
                   </div>
                   <div className="flex gap-1">
-                    <button onClick={() => { setEditingSupplier(s); setSForm({ name: s.name, category: s.category ?? undefined, phone: s.phone ?? undefined, email: s.email ?? undefined, address: s.address ?? undefined, website: s.website ?? undefined, notes: s.notes ?? undefined, rating: s.rating ?? undefined }); setSupplierOpen(true); }} className="h-7 w-7 flex items-center justify-center rounded hover:bg-[#F2F2EE]"><Edit className="h-3.5 w-3.5 text-[#82806F]" /></button>
+                    <button onClick={() => { setEditingSupplier(s); setSForm({ name: s.name, category: s.category ?? undefined, phone: s.phone ?? undefined, email: s.email ?? undefined, address: s.address ?? undefined, website: s.website ?? undefined, notes: s.notes ?? undefined, rating: s.rating ?? undefined }); setSupplierOpen(true); }} className="h-7 w-7 flex items-center justify-center rounded hover:bg-[#F1F5F9]"><Edit className="h-3.5 w-3.5 text-[#64748B]" /></button>
                     <button onClick={() => delSupplier(s.id)} className="h-7 w-7 flex items-center justify-center rounded hover:bg-red-50"><Trash2 className="h-3.5 w-3.5 text-red-500" /></button>
                   </div>
                 </div>
                 {s.rating && (
                   <div className="flex gap-0.5">
                     {Array.from({ length: 5 }).map((_, i) => (
-                      <Star key={i} className={`h-3 w-3 ${i < s.rating! ? "text-amber-400 fill-amber-400" : "text-[#E8E6DF]"}`} />
+                      <Star key={i} className={`h-3 w-3 ${i < s.rating! ? "text-amber-400 fill-amber-400" : "text-[#E5E7EB]"}`} />
                     ))}
                   </div>
                 )}
-                <div className="space-y-1 text-xs text-[#82806F]">
+                <div className="space-y-1 text-xs text-[#64748B]">
                   {s.phone && <div className="flex items-center gap-1.5"><Phone className="h-3 w-3" />{s.phone}</div>}
                   {s.email && <div className="flex items-center gap-1.5"><Mail className="h-3 w-3" />{s.email}</div>}
                   {s.website && normalizeExternalUrl(s.website) && (
-                    <a href={normalizeExternalUrl(s.website) ?? "#"} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 hover:text-[#16170E]">
+                    <a href={normalizeExternalUrl(s.website) ?? "#"} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 hover:text-[#0B1220]">
                       <Globe className="h-3 w-3" />
                       {displayExternalUrl(normalizeExternalUrl(s.website) ?? s.website)}
                       <ExternalLink className="h-2.5 w-2.5" />
                     </a>
                   )}
                 </div>
-                <p className="text-xs text-[#82806F]">{items.filter((i) => i.supplier_id === s.id).length} articles au catalogue</p>
+                <p className="text-xs text-[#64748B]">{items.filter((i) => i.supplier_id === s.id).length} articles au catalogue</p>
               </div>
             ))}
           </div>
-          {filteredSuppliers.length === 0 && <p className="text-sm text-[#82806F] text-center py-8">Aucun fournisseur.</p>}
+          {filteredSuppliers.length === 0 && <p className="text-sm text-[#64748B] text-center py-8">Aucun fournisseur.</p>}
         </TabsContent>
 
         <TabsContent value="catalogue" className="mt-4 space-y-3">
           <Button onClick={() => { setEditingItem(null); setIForm({ name: "", unit: "m²", unitPriceCentimes: 0 }); setItemOpen(true); }}>
             <Plus className="h-4 w-4 mr-2" />Ajouter un article
           </Button>
-          <div className="bg-white border border-[#E8E6DF] rounded-xl overflow-hidden">
-            <div className="hidden sm:grid grid-cols-[1fr_120px_80px_100px_80px_80px] gap-2 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-[#82806F] bg-[#F2F2EE]">
+          <div className="bg-white border border-[#E5E7EB] rounded-xl overflow-hidden">
+            <div className="hidden sm:grid grid-cols-[1fr_120px_80px_100px_80px_80px] gap-2 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-[#64748B] bg-[#F1F5F9]">
               <span>Article</span>
               <span>Fournisseur</span>
               <span>Unité</span>
@@ -167,19 +197,19 @@ export function SuppliersPage({ initialSuppliers, initialItems }: Props) {
               <span></span>
             </div>
             {filteredItems.map((item) => (
-              <div key={item.id} className="px-4 py-3 border-t border-[#E8E6DF] first:border-0 hover:bg-[#F2F2EE]/40 transition-colors">
+              <div key={item.id} className="px-4 py-3 border-t border-[#E5E7EB] first:border-0 hover:bg-[#F1F5F9]/40 transition-colors">
                 <div className="hidden sm:grid grid-cols-[1fr_120px_80px_100px_80px_80px] gap-2 items-center text-sm">
                   <div>
-                    <p className="font-medium text-[#16170E]">{item.name}</p>
-                    {item.description && <p className="text-xs text-[#82806F]">{item.description}</p>}
+                    <p className="font-medium text-[#0B1220]">{item.name}</p>
+                    {item.description && <p className="text-xs text-[#64748B]">{item.description}</p>}
                     {item.category && <Badge variant="outline" className="text-[9px] mt-0.5">{item.category}</Badge>}
                   </div>
-                  <span className="text-xs text-[#82806F]">{item.suppliers?.name ?? "—"}</span>
-                  <span className="text-xs text-[#82806F]">{item.unit}</span>
+                  <span className="text-xs text-[#64748B]">{item.suppliers?.name ?? "—"}</span>
+                  <span className="text-xs text-[#64748B]">{item.unit}</span>
                   <span className="text-right font-semibold">{formatMAD(item.unit_price_centimes)}</span>
-                  <span className="text-xs text-[#82806F]">{item.reference ?? "—"}</span>
+                  <span className="text-xs text-[#64748B]">{item.reference ?? "—"}</span>
                   <div className="flex gap-1 justify-end">
-                    <button onClick={() => { setEditingItem(item); setIForm({ supplierId: item.supplier_id ?? undefined, name: item.name, description: item.description ?? undefined, unit: item.unit, unitPriceCentimes: item.unit_price_centimes, category: item.category ?? undefined, reference: item.reference ?? undefined }); setItemOpen(true); }} className="h-7 w-7 flex items-center justify-center rounded hover:bg-white"><Edit className="h-3.5 w-3.5 text-[#82806F]" /></button>
+                    <button onClick={() => { setEditingItem(item); setIForm({ supplierId: item.supplier_id ?? undefined, name: item.name, description: item.description ?? undefined, unit: item.unit, unitPriceCentimes: item.unit_price_centimes, category: item.category ?? undefined, reference: item.reference ?? undefined }); setItemOpen(true); }} className="h-7 w-7 flex items-center justify-center rounded hover:bg-white"><Edit className="h-3.5 w-3.5 text-[#64748B]" /></button>
                     <button onClick={() => delItem(item.id)} className="h-7 w-7 flex items-center justify-center rounded hover:bg-red-50"><Trash2 className="h-3.5 w-3.5 text-red-500" /></button>
                   </div>
                 </div>
@@ -188,11 +218,11 @@ export function SuppliersPage({ initialSuppliers, initialItems }: Props) {
                     <p className="font-medium text-sm">{item.name}</p>
                     <p className="font-semibold text-sm">{formatMAD(item.unit_price_centimes)}/{item.unit}</p>
                   </div>
-                  {item.suppliers?.name && <p className="text-xs text-[#82806F]">{item.suppliers.name}</p>}
+                  {item.suppliers?.name && <p className="text-xs text-[#64748B]">{item.suppliers.name}</p>}
                 </div>
               </div>
             ))}
-            {filteredItems.length === 0 && <p className="text-sm text-[#82806F] text-center py-8">Aucun article.</p>}
+            {filteredItems.length === 0 && <p className="text-sm text-[#64748B] text-center py-8">Aucun article.</p>}
           </div>
         </TabsContent>
       </Tabs>

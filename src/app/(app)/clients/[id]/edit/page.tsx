@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { EditClientForm } from "@/components/clients/edit-client-form";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { getWorkspaceId } from "@/lib/workspace";
 
 export default async function EditClientPage({
   params,
@@ -11,7 +12,9 @@ export default async function EditClientPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
-  const { data: client } = await supabase.from("clients").select("*").eq("id", id).single();
+  const workspaceId = await getWorkspaceId(supabase);
+  if (!workspaceId) notFound();
+  const { data: client } = await supabase.from("clients").select("*").eq("id", id).eq("workspace_id", workspaceId).single();
 
   if (!client) notFound();
 

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { FileManager } from "@/components/files/file-manager";
+import { getWorkspaceId } from "@/lib/workspace";
 
 const DEFAULT_FOLDERS = ["Plans", "Rendus", "Documents", "Photos", "Autre"];
 
@@ -13,11 +14,14 @@ export default async function ProjectFilesPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+  const workspaceId = await getWorkspaceId(supabase);
+  if (!workspaceId) notFound();
 
   const { data: project } = await supabase
     .from("projects")
     .select("id, title")
     .eq("id", id)
+    .eq("workspace_id", workspaceId)
     .single();
 
   if (!project) notFound();
@@ -25,6 +29,7 @@ export default async function ProjectFilesPage({
   const { data: files } = await supabase
     .from("files")
     .select("*")
+    .eq("workspace_id", workspaceId)
     .eq("project_id", id)
     .order("folder")
     .order("created_at", { ascending: false });

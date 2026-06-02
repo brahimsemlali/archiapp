@@ -29,7 +29,32 @@ export interface CatalogItemValues {
   lastUpdated?: string;
 }
 
-export async function createSupplierAction(values: SupplierValues): Promise<Result<{ id: string }>> {
+export interface SupplierRow {
+  id: string;
+  name: string;
+  category: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  website: string | null;
+  notes: string | null;
+  rating: number | null;
+}
+
+export interface CatalogItemRow {
+  id: string;
+  supplier_id: string | null;
+  name: string;
+  description: string | null;
+  unit: string;
+  unit_price_centimes: number;
+  category: string | null;
+  reference: string | null;
+  last_updated: string | null;
+  suppliers?: { name: string } | null;
+}
+
+export async function createSupplierAction(values: SupplierValues): Promise<Result<SupplierRow>> {
   if (!values.name?.trim()) return { ok: false, error: "Nom requis." };
   const website = normalizeExternalUrl(values.website);
   if (values.website?.trim() && !website) return { ok: false, error: "Site web invalide." };
@@ -48,7 +73,7 @@ export async function createSupplierAction(values: SupplierValues): Promise<Resu
     website,
     notes: values.notes?.trim() || null,
     rating: values.rating ?? null,
-  }).select("id").single();
+  }).select("id, name, category, phone, email, address, website, notes, rating").single();
 
   if (error) return { ok: false, error: dbError(error) };
 
@@ -59,7 +84,7 @@ export async function createSupplierAction(values: SupplierValues): Promise<Resu
   });
 
   revalidatePath("/fournisseurs");
-  return { ok: true, data: { id: data.id } };
+  return { ok: true, data };
 }
 
 export async function updateSupplierAction(id: string, values: Partial<SupplierValues>): Promise<Result<void>> {
@@ -106,7 +131,7 @@ export async function deleteSupplierAction(id: string): Promise<Result<void>> {
   return { ok: true, data: undefined };
 }
 
-export async function createCatalogItemAction(values: CatalogItemValues): Promise<Result<{ id: string }>> {
+export async function createCatalogItemAction(values: CatalogItemValues): Promise<Result<CatalogItemRow>> {
   if (!values.name?.trim()) return { ok: false, error: "Nom requis." };
   const supabase = await createClient();
   const context = await requireWorkspaceRole(supabase);
@@ -125,11 +150,14 @@ export async function createCatalogItemAction(values: CatalogItemValues): Promis
     category: values.category || null,
     reference: values.reference?.trim() || null,
     last_updated: values.lastUpdated || new Date().toISOString().split("T")[0],
-  }).select("id").single();
+  }).select("id, supplier_id, name, description, unit, unit_price_centimes, category, reference, last_updated, suppliers!catalog_items_supplier_id_fkey(name)").single();
 
   if (error) return { ok: false, error: dbError(error) };
   revalidatePath("/fournisseurs");
-  return { ok: true, data: { id: data.id } };
+  return { ok: true, data: {
+    ...data,
+    suppliers: Array.isArray(data.suppliers) ? data.suppliers[0] ?? null : data.suppliers,
+  } };
 }
 
 export async function updateCatalogItemAction(id: string, values: Partial<CatalogItemValues>): Promise<Result<void>> {

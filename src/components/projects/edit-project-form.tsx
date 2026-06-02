@@ -8,6 +8,7 @@ import type { ProjectFormValues } from "@/lib/validators/project";
 import { toast } from "sonner";
 import { centimsToInput } from "@/lib/format";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Loader2, Archive } from "lucide-react";
 
 interface EditProjectFormProps {
@@ -32,6 +33,7 @@ interface EditProjectFormProps {
 export function EditProjectForm({ project, clients }: EditProjectFormProps) {
   const [loading, setLoading] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const router = useRouter();
 
   async function handleSubmit(values: ProjectFormValues) {
@@ -49,7 +51,6 @@ export function EditProjectForm({ project, clients }: EditProjectFormProps) {
   }
 
   async function handleArchive() {
-    if (!confirm("Archiver ce projet ? Il ne sera plus visible dans la liste active.")) return;
     setArchiving(true);
     const result = await archiveProjectAction(project.id);
     setArchiving(false);
@@ -91,7 +92,7 @@ export function EditProjectForm({ project, clients }: EditProjectFormProps) {
           type="button"
           variant="outline"
           className="text-destructive border-destructive/30 hover:bg-destructive/5"
-          onClick={handleArchive}
+          onClick={() => setConfirmArchive(true)}
           disabled={archiving}
         >
           {archiving ? (
@@ -102,6 +103,15 @@ export function EditProjectForm({ project, clients }: EditProjectFormProps) {
           Archiver ce projet
         </Button>
       </div>
+      <ConfirmDialog
+        open={confirmArchive}
+        onOpenChange={setConfirmArchive}
+        title="Archiver ce projet ?"
+        description="Il ne sera plus visible dans la liste active."
+        confirmLabel="Archiver"
+        variant="default"
+        onConfirm={handleArchive}
+      />
     </div>
   );
 }

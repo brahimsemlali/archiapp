@@ -43,11 +43,11 @@ const STATUS_LABELS: Record<BoqItemRow["procurement_status"], string> = {
 };
 
 const STATUS_CLASSES: Record<BoqItemRow["procurement_status"], string> = {
-  not_started: "bg-[#F2F2EE] text-[#6B6B5A]",
+  not_started: "bg-[#F1F5F9] text-[#475569]",
   requested: "bg-blue-50 text-blue-700",
   ordered: "bg-amber-50 text-amber-700",
   delivered: "bg-[#E5F3EB] text-[#2F8F5C]",
-  installed: "bg-[#16170E] text-white",
+  installed: "bg-[#0B1220] text-white",
   cancelled: "bg-[#FCEFE6] text-[#C75B2E]",
 };
 
@@ -67,7 +67,7 @@ export function BoqManager({
   defaultProjectId?: string;
 }) {
   const t = useTranslations("common");
-  const [rows, setRows] = useState(items);
+  const [rowSnapshot, setRowSnapshot] = useState({ source: items, rows: items });
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     projectId: defaultProjectId ?? projects[0]?.id ?? "",
@@ -81,6 +81,18 @@ export function BoqManager({
     procurementStatus: "not_started" as BoqItemRow["procurement_status"],
     notes: "",
   });
+
+  if (rowSnapshot.source !== items) {
+    setRowSnapshot({ source: items, rows: items });
+  }
+
+  const rows = rowSnapshot.rows;
+  const setRows = (update: BoqItemRow[] | ((currentRows: BoqItemRow[]) => BoqItemRow[])) => {
+    setRowSnapshot((current) => ({
+      source: current.source,
+      rows: typeof update === "function" ? update(current.rows) : update,
+    }));
+  };
 
   const totals = useMemo(() => {
     const estimated = rows.reduce((sum, row) => sum + (row.estimated_cost_centimes ?? 0), 0);
@@ -166,10 +178,10 @@ export function BoqManager({
         <Summary label="Commandés/livrés" value={`${totals.ordered}/${rows.length}`} />
       </div>
 
-      <form onSubmit={handleCreate} className="rounded-xl border border-[#E8E6DF] bg-white p-4 space-y-3">
+      <form onSubmit={handleCreate} className="rounded-xl border border-[#E5E7EB] bg-white p-4 space-y-3">
         <div className="flex items-center gap-2">
-          <PackagePlus className="h-4 w-4 text-[#6B6B5A]" />
-          <p className="text-sm font-semibold text-[#16170E]">Nouvel article BOQ</p>
+          <PackagePlus className="h-4 w-4 text-[#475569]" />
+          <p className="text-sm font-semibold text-[#0B1220]">Nouvel article BOQ</p>
         </div>
         <div className="grid gap-3 md:grid-cols-4">
           {!defaultProjectId && (
@@ -239,21 +251,21 @@ export function BoqManager({
         </div>
       </form>
 
-      <div className="rounded-xl border border-[#E8E6DF] bg-white overflow-hidden">
+      <div className="rounded-xl border border-[#E5E7EB] bg-white overflow-hidden">
         {rows.length === 0 ? (
-          <div className="p-8 text-center text-sm text-[#82806F]">Aucun article BOQ pour l'instant.</div>
+          <div className="p-8 text-center text-sm text-[#64748B]">Aucun article BOQ pour l'instant.</div>
         ) : (
           <div className="divide-y divide-[#F0EEE8]">
             {rows.map((row) => (
               <div key={row.id} className="grid gap-3 p-4 lg:grid-cols-[1.6fr_0.8fr_0.8fr_0.8fr_1fr_auto] lg:items-center">
                 <div className="min-w-0">
-                  <p className="font-semibold text-[#16170E]">{row.item_name}</p>
-                  <p className="mt-0.5 text-xs text-[#82806F]">
+                  <p className="font-semibold text-[#0B1220]">{row.item_name}</p>
+                  <p className="mt-0.5 text-xs text-[#64748B]">
                     {relationOne(row.projects)?.title ?? "Projet"}{row.category ? ` · ${row.category}` : ""}{relationOne(row.suppliers)?.name ? ` · ${relationOne(row.suppliers)?.name}` : ""}
                   </p>
-                  {row.notes && <p className="mt-1 text-xs text-[#6B6B5A]">{row.notes}</p>}
+                  {row.notes && <p className="mt-1 text-xs text-[#475569]">{row.notes}</p>}
                 </div>
-                <p className="text-sm text-[#6B6B5A] tabular-nums">{Number(row.quantity).toLocaleString("fr-FR")} {row.unit}</p>
+                <p className="text-sm text-[#475569] tabular-nums">{Number(row.quantity).toLocaleString("fr-FR")} {row.unit}</p>
                 <p className="text-sm font-medium tabular-nums">{row.estimated_cost_centimes ? formatMAD(row.estimated_cost_centimes) : "—"}</p>
                 <p className={cn("text-sm font-medium tabular-nums", row.actual_cost_centimes > row.estimated_cost_centimes && row.estimated_cost_centimes > 0 ? "text-[#C75B2E]" : "")}>
                   {row.actual_cost_centimes ? formatMAD(row.actual_cost_centimes) : "—"}
@@ -287,9 +299,9 @@ export function BoqManager({
 
 function Summary({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
   return (
-    <div className="rounded-xl border border-[#E8E6DF] bg-white p-3">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#82806F]">{label}</p>
-      <p className={cn("mt-1 text-lg font-bold tabular-nums", danger ? "text-[#C75B2E]" : "text-[#16170E]")}>{value}</p>
+    <div className="rounded-xl border border-[#E5E7EB] bg-white p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">{label}</p>
+      <p className={cn("mt-1 text-lg font-bold tabular-nums", danger ? "text-[#C75B2E]" : "text-[#0B1220]")}>{value}</p>
     </div>
   );
 }

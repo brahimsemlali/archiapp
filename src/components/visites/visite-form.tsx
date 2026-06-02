@@ -7,24 +7,34 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Camera, Plus, Trash2, Loader2, Sparkles, MapPin, X } from "lucide-react";
+import { AlertTriangle, Camera, Plus, Trash2, Loader2, Sparkles, MapPin, X } from "lucide-react";
 import Image from "next/image";
 import { createVisiteAction, uploadVisitePhotoAction } from "@/lib/actions/visites";
 import type { Observation } from "@/lib/actions/visites";
-import crypto from "crypto";
+import { IMAGE_UPLOAD_ACCEPT, isAllowedImageFile } from "@/lib/upload-rules";
 
 const ZONES = ["Gros œuvre", "Façade", "Toiture", "Intérieur", "Fondations", "Chantier général", "Autre"];
 
 interface VisiteFormProps {
   projectId: string;
   projectTitle: string;
+  aiEnabled: boolean;
 }
 
 function newObservation(): Observation {
-  return { id: crypto.randomUUID(), zone: "Chantier général", note: "", photoUrl: undefined, photoPath: undefined };
+  return {
+    id: globalThis.crypto.randomUUID(),
+    zone: "Chantier général",
+    note: "",
+    photoUrl: undefined,
+    photoPath: undefined,
+    createIssue: false,
+    issuePriority: "medium",
+    issueTitle: "",
+  };
 }
 
-export function VisiteForm({ projectId, projectTitle }: VisiteFormProps) {
+export function VisiteForm({ projectId, projectTitle, aiEnabled }: VisiteFormProps) {
   const router = useRouter();
   const [title, setTitle] = useState(`Visite de chantier — ${new Date().toLocaleDateString("fr-MA")}`);
   const [visitDate, setVisitDate] = useState(new Date().toISOString().slice(0, 10));
@@ -41,6 +51,8 @@ export function VisiteForm({ projectId, projectTitle }: VisiteFormProps) {
   }
 
   async function handlePhotoChange(idx: number, file: File) {
+    if (!isAllowedImageFile(file)) { toast.error("Photo requise : JPG, PNG ou WEBP."); return; }
+    if (file.size > 10 * 1024 * 1024) { toast.error("Photo trop lourde (max 10 Mo)."); return; }
     setUploadingIdx(idx);
     const fd = new FormData();
     fd.append("photo", file);
@@ -51,6 +63,11 @@ export function VisiteForm({ projectId, projectTitle }: VisiteFormProps) {
   }
 
   async function handleGenerateSummary() {
+    if (!aiEnabled) {
+      toast.error("La synthèse IA est disponible sur les plans Studio AI et Agence AI.");
+      return;
+    }
+
     const obsText = observations
       .filter((o) => o.note.trim())
       .map((o) => `Zone: ${o.zone} — ${o.note}`)
@@ -163,6 +180,45 @@ export function VisiteForm({ projectId, projectTitle }: VisiteFormProps) {
                 className="resize-none"
               />
 
+              <div className="rounded-lg border border-[#E5E7EB] bg-[#F7F8FA] p-3">
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={!!obs.createIssue}
+                    onChange={(e) => updateObs(idx, { createIssue: e.target.checked })}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="flex items-center gap-1.5 font-medium text-[#0B1220]">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                      Ajouter à la punch list
+                    </span>
+                    <span className="block text-xs text-[#64748B]">
+                      Crée une réserve assignable à suivre jusqu'à résolution.
+                    </span>
+                  </span>
+                </label>
+                {obs.createIssue && (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_150px]">
+                    <Input
+                      value={obs.issueTitle ?? ""}
+                      onChange={(e) => updateObs(idx, { issueTitle: e.target.value })}
+                      placeholder="Titre de la réserve (optionnel)"
+                      className="text-sm"
+                    />
+                    <select
+                      value={obs.issuePriority ?? "medium"}
+                      onChange={(e) => updateObs(idx, { issuePriority: e.target.value as Observation["issuePriority"] })}
+                      className="h-9 rounded-md border border-input bg-white px-3 text-sm"
+                    >
+                      <option value="low">Priorité basse</option>
+                      <option value="medium">Priorité moyenne</option>
+                      <option value="high">Priorité haute</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+
               {/* Photo */}
               {obs.photoUrl ? (
                 <div className="relative">
@@ -185,7 +241,7 @@ export function VisiteForm({ projectId, projectTitle }: VisiteFormProps) {
                 <div>
                   <input
                     type="file"
-                    accept="image/*"
+                    accept={IMAGE_UPLOAD_ACCEPT}
                     capture="environment"
                     className="hidden"
                     ref={(el) => { fileRefs.current[idx] = el; }}
@@ -222,14 +278,15 @@ export function VisiteForm({ projectId, projectTitle }: VisiteFormProps) {
             variant="outline"
             size="sm"
             onClick={handleGenerateSummary}
-            disabled={generating}
+            disabled={generating || !aiEnabled}
+            title={aiEnabled ? "Générer une synthèse IA" : "Disponible sur Studio AI et Agence AI"}
           >
             {generating ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
               <Sparkles className="h-4 w-4 mr-2 text-purple-500" />
             )}
-            {generating ? "Génération..." : "Générer avec IA"}
+            {generating ? "Génération..." : aiEnabled ? "Générer avec IA" : "IA non incluse"}
           </Button>
         </div>
         <Textarea

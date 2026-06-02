@@ -2,8 +2,10 @@ import { createClient } from "@/lib/supabase/server";
 import { TimeTracker } from "@/components/time/time-tracker";
 import { getWorkspaceId } from "@/lib/workspace";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 
 export default async function TimePage() {
+  const t = await getTranslations("time");
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   const workspaceId = await getWorkspaceId(supabase, user?.id);
@@ -41,9 +43,9 @@ export default async function TimePage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="pt-1">
-        <p className="eyebrow mb-1">Planning</p>
-        <h1 className="page-title text-[28px] text-[#16170E]">Suivi du temps</h1>
-        <p className="text-[13.5px] text-[#82806F] mt-1">Chronométrez votre travail et suivez les heures facturables.</p>
+        <p className="eyebrow mb-1">{t("eyebrow")}</p>
+        <h1 className="page-title text-[28px] text-[#0B1220]">{t("title")}</h1>
+        <p className="text-[13.5px] text-[#64748B] mt-1">{t("subtitle")}</p>
       </div>
 
       <TimeTracker

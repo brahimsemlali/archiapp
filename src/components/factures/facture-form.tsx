@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useRef, useState, useCallback, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { factureFormSchema, type FactureFormValues } from "@/lib/validators/facture";
-import { createFactureAction } from "@/lib/actions/factures";
+import { createFactureAction, updateFactureAction } from "@/lib/actions/factures";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,23 +15,24 @@ import { toast } from "sonner";
 import { Plus, Trash2, Loader2 } from "lucide-react";
 import { formatMAD } from "@/lib/format";
 import type { DevisItem } from "@/lib/validators/devis";
-import crypto from "crypto";
 
 interface FactureFormProps {
   clients: { id: string; name: string }[];
   projects: { id: string; title: string; client_id: string }[];
   defaultValues?: Partial<FactureFormValues>;
+  factureId?: string;
 }
 
 function centimesToInput(c: number) { return (c / 100).toFixed(2); }
 function inputToCentimes(v: string) { return Math.round(parseFloat(v || "0") * 100); }
 function newItem(): DevisItem {
-  return { id: crypto.randomUUID(), description: "", quantity: 1, unit: "forfait", unitPriceCentimes: 0 };
+  return { id: globalThis.crypto.randomUUID(), description: "", quantity: 1, unit: "forfait", unitPriceCentimes: 0 };
 }
 
-export function FactureForm({ clients, projects, defaultValues }: FactureFormProps) {
+export function FactureForm({ clients, projects, defaultValues, factureId }: FactureFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
 
   const form = useForm<FactureFormValues, unknown, FactureFormValues>({
     resolver: zodResolver(factureFormSchema) as never,
@@ -49,9 +50,10 @@ export function FactureForm({ clients, projects, defaultValues }: FactureFormPro
   });
 
   const { fields, append, remove } = useFieldArray({ control: form.control, name: "items" });
-  const watchItems = form.watch("items");
-  const watchTvaRate = form.watch("tvaRate");
-  const watchClientId = form.watch("clientId");
+  const watchItems = useWatch({ control: form.control, name: "items" }) ?? [];
+  const watchTvaRate = useWatch({ control: form.control, name: "tvaRate" });
+  const watchClientId = useWatch({ control: form.control, name: "clientId" });
+  const watchProjectId = useWatch({ control: form.control, name: "projectId" });
   const clientProjects = projects.filter((p) => p.client_id === watchClientId);
 
   const subtotal = watchItems.reduce((s, i) => s + Math.round((i.quantity || 0) * (i.unitPriceCentimes || 0)), 0);
@@ -59,16 +61,47 @@ export function FactureForm({ clients, projects, defaultValues }: FactureFormPro
   const total = subtotal + tva;
 
   const onSubmit = useCallback(async (values: FactureFormValues) => {
-    setLoading(true);
-    const result = await createFactureAction(values);
+    if (factureId) {
+      const result = await updateFactureAction(factureId, values);
+      if (!result.ok) {
+        setLoading(false);
+        submittingRef.current = false;
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Facture mise à jour.");
+      router.push(`/factures/${factureId}`);
+    } else {
+      const result = await createFactureAction(values);
+      if (!result.ok) {
+        setLoading(false);
+        submittingRef.current = false;
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Facture créée.");
+      if (result.ok && result.data) router.push(`/factures/${result.data.id}`);
+    }
+  }, [router, factureId]);
+
+  const onInvalid = useCallback(() => {
     setLoading(false);
-    if (!result.ok) { toast.error(result.error); return; }
-    toast.success("Facture créée.");
-    if (result.ok && result.data) router.push(`/factures/${result.data.id}`);
-  }, [router]);
+    submittingRef.current = false;
+  }, []);
+
+  const handleFormSubmit = useCallback((event: FormEvent<HTMLFormElement>) => {
+    if (submittingRef.current) {
+      event.preventDefault();
+      return;
+    }
+
+    submittingRef.current = true;
+    setLoading(true);
+    void form.handleSubmit(onSubmit, onInvalid)(event);
+  }, [form, onInvalid, onSubmit]);
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={handleFormSubmit} className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="title">Titre *</Label>
@@ -77,7 +110,7 @@ export function FactureForm({ clients, projects, defaultValues }: FactureFormPro
         </div>
         <div className="space-y-1.5">
           <Label>Client *</Label>
-          <Select value={form.watch("clientId")} onValueChange={(v) => { form.setValue("clientId", v ?? ""); form.setValue("projectId", undefined); }}>
+          <Select value={watchClientId} onValueChange={(v) => { form.setValue("clientId", v ?? ""); form.setValue("projectId", undefined); }}>
             <SelectTrigger><SelectValue placeholder="Sélectionner un client" /></SelectTrigger>
             <SelectContent>{clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
           </Select>
@@ -85,7 +118,7 @@ export function FactureForm({ clients, projects, defaultValues }: FactureFormPro
         {clientProjects.length > 0 && (
           <div className="space-y-1.5">
             <Label>Projet (optionnel)</Label>
-            <Select value={form.watch("projectId") ?? "none"} onValueChange={(v) => form.setValue("projectId", !v || v === "none" ? undefined : v)}>
+            <Select value={watchProjectId ?? "none"} onValueChange={(v) => form.setValue("projectId", !v || v === "none" ? undefined : v)}>
               <SelectTrigger><SelectValue placeholder="Lier à un projet" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Aucun</SelectItem>
@@ -114,8 +147,8 @@ export function FactureForm({ clients, projects, defaultValues }: FactureFormPro
           {fields.map((field, idx) => {
             const lineTotal = Math.round((watchItems[idx]?.quantity ?? 0) * (watchItems[idx]?.unitPriceCentimes ?? 0));
             return (
-              <div key={field.id} className="grid grid-cols-[1fr_80px_100px_120px_40px] gap-2 items-start bg-gray-50 rounded-lg p-2 border">
-                <Input placeholder="Description" {...form.register(`items.${idx}.description`)} className="bg-white" />
+              <div key={field.id} className="grid grid-cols-2 sm:grid-cols-[1fr_80px_100px_120px_40px] gap-2 items-start bg-gray-50 rounded-lg p-2 border">
+                <Input placeholder="Description" {...form.register(`items.${idx}.description`)} className="bg-white col-span-2 sm:col-span-1" />
                 <Input type="number" step="0.01" min="0" {...form.register(`items.${idx}.quantity`, { valueAsNumber: true })} className="bg-white" />
                 <Input placeholder="forfait" {...form.register(`items.${idx}.unit`)} className="bg-white" />
                 <div className="space-y-0.5">
