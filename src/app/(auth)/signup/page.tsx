@@ -52,6 +52,21 @@ export default function SignupPage() {
     router.push(invite ? `/login?invite=${invite}` : "/login");
   }
 
+  async function handleGoogleSignup() {
+    if (!accepted) {
+      toast.error(t("acceptRequired"));
+      return;
+    }
+    const invite = searchParams.get("invite");
+    const callbackUrl = new URL("/auth/callback", window.location.origin);
+    if (invite) callbackUrl.searchParams.set("invite", invite);
+
+    await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: callbackUrl.href },
+    });
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <Card className="w-full max-w-md">
@@ -116,6 +131,25 @@ export default function SignupPage() {
               {t("signup")}
             </Button>
           </form>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">ou</span>
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={handleGoogleSignup}
+            disabled={!accepted}
+          >
+            {t("loginWithGoogle")}
+          </Button>
 
           <p className="text-center text-sm text-muted-foreground">
             {t("hasAccount")}{" "}
