@@ -84,15 +84,17 @@ function headersToObject(headers: HeadersInit | undefined): Record<string, strin
 
 async function requestWithPinnedLookup(url: URL, init: RequestInit): Promise<Response> {
   const addresses = await resolvePublicHttpUrl(url);
-  const selectedAddress = addresses[0]!;
   const client = url.protocol === "https:" ? https : http;
 
   return await new Promise<Response>((resolve, reject) => {
     const request = client.request(url, {
       method: init.method ?? "GET",
       headers: headersToObject(init.headers),
+      // Use the `all`-array callback form: required by Node's autoSelectFamily (default-on
+      // since Node 20) — the legacy 3-arg form throws "Invalid IP address: undefined".
+      // Pinning to the already-verified-public addresses keeps the SSRF guarantee.
       lookup: (_hostname, _options, callback) => {
-        callback(null, selectedAddress.address, selectedAddress.family);
+        callback(null, addresses);
       },
     }, (response) => {
       const chunks: Buffer[] = [];

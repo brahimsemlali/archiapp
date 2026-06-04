@@ -4,7 +4,7 @@ import { signInspirationItems } from "@/lib/storage/signed-images";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, Users, Pencil } from "lucide-react";
+import { ChevronLeft, Users, Pencil, Download } from "lucide-react";
 import { MoodboardBoard } from "@/components/moodboards/moodboard-board";
 import { MoodboardEditSheet } from "@/components/moodboards/moodboard-edit-sheet";
 import type { InspirationItem } from "@/components/projects/inspiration-board";
@@ -62,21 +62,31 @@ export default async function MoodboardDetailPage({
             )}
           </div>
         </div>
-        <MoodboardEditSheet
-          moodboard={{
-            id: board.id,
-            title: board.title,
-            description: board.description,
-            clientId: board.client_id,
-          }}
-          clients={clients ?? []}
-          trigger={
-            <Button variant="outline" size="sm" className="shrink-0 gap-1.5">
-              <Pencil className="h-3.5 w-3.5" />
-              Modifier
-            </Button>
-          }
-        />
+        <div className="flex items-center gap-2 shrink-0">
+          {items.length > 0 && (
+            <a href={`/api/moodboards/${board.id}/pdf`} download>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Download className="h-3.5 w-3.5" />
+                Télécharger le PDF
+              </Button>
+            </a>
+          )}
+          <MoodboardEditSheet
+            moodboard={{
+              id: board.id,
+              title: board.title,
+              description: board.description,
+              clientId: board.client_id,
+            }}
+            clients={clients ?? []}
+            trigger={
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Pencil className="h-3.5 w-3.5" />
+                Modifier
+              </Button>
+            }
+          />
+        </div>
       </div>
 
       {/* Board */}
