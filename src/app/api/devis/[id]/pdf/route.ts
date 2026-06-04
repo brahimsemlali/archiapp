@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { DevisPdf } from "@/lib/pdf/devis-template";
+import { withNormalizedLogo } from "@/lib/pdf/logo";
 import React from "react";
 import type { DocumentProps } from "@react-pdf/renderer";
 import type { DevisItem } from "@/lib/validators/devis";
@@ -53,7 +54,7 @@ export async function GET(
     },
     client,
     project: project ? { title: project.title } : null,
-    firm,
+    firm: await withNormalizedLogo(firm),
   }) as React.ReactElement<DocumentProps>;
 
   const pdfBuffer = await renderToBuffer(element);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { MeetingPdf } from "@/lib/pdf/meeting-pdf-template";
+import { withNormalizedLogo } from "@/lib/pdf/logo";
 import React from "react";
 import type { DocumentProps } from "@react-pdf/renderer";
 import { requireActiveWorkspace } from "@/lib/workspace";
@@ -59,7 +60,7 @@ export async function GET(
   const element = React.createElement(MeetingPdf, {
     meeting: meetingData,
     project: project ?? null,
-    firm: firm ?? null,
+    firm: await withNormalizedLogo(firm),
   }) as React.ReactElement<DocumentProps>;
 
   const pdfBuffer = await renderToBuffer(element);

@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireActiveWorkspace } from "@/lib/workspace";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { FacturePdf } from "@/lib/pdf/facture-template";
+import { withNormalizedLogo } from "@/lib/pdf/logo";
 import React from "react";
 import type { DocumentProps } from "@react-pdf/renderer";
 import type { DevisItem } from "@/lib/validators/devis";
@@ -82,7 +83,7 @@ export async function GET(
       },
       client: snapshotFacture.clients ?? null,
       project: snapshotFacture.projects ? { title: snapshotFacture.projects.title } : null,
-      firm: payload.firmProfile ?? null,
+      firm: await withNormalizedLogo(payload.firmProfile),
     }) as React.ReactElement<DocumentProps>;
 
     const pdfBuffer = await renderToBuffer(element);
@@ -131,7 +132,7 @@ export async function GET(
     },
     client,
     project: project ? { title: project.title } : null,
-    firm,
+    firm: await withNormalizedLogo(firm),
   }) as React.ReactElement<DocumentProps>;
 
   const pdfBuffer = await renderToBuffer(element);
