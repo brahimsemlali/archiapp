@@ -491,6 +491,62 @@
   }
 }
 
+/* ── Moodboards · editorial gallery ────────────────────────────────── */
+/* Atmospheric backdrop: cool gradient mesh + fading blueprint grid.
+   Place <div class="mb-atmos" aria-hidden /> as the first child of a
+   `relative` container, with content layered above via `relative z-10`. */
+.mb-atmos {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.mb-atmos::before {
+  content: "";
+  position: absolute;
+  inset: -55% -12% 25% -12%;
+  background:
+    radial-gradient(44% 60% at 12% 6%, rgba(37, 99, 235, 0.16), transparent 72%),
+    radial-gradient(40% 55% at 88% 0%, rgba(56, 189, 248, 0.14), transparent 70%),
+    radial-gradient(40% 52% at 62% 16%, rgba(99, 102, 241, 0.10), transparent 72%);
+  filter: blur(8px);
+}
+.mb-atmos::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(11, 18, 32, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(11, 18, 32, 0.05) 1px, transparent 1px);
+  background-size: 30px 30px;
+  -webkit-mask-image: radial-gradient(125% 100% at 18% 0%, #000, transparent 72%);
+  mask-image: radial-gradient(125% 100% at 18% 0%, #000, transparent 72%);
+}
+
+/* Fraunces italic editorial accent */
+.mb-accent {
+  font-family: var(--font-fraunces), "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 400;
+}
+
+/* Gallery-frame tile: matte border + inner hairline, lifts on hover */
+.mb-tile {
+  transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 320ms ease;
+}
+.mb-tile:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 22px 40px -20px rgba(11, 18, 32, 0.28);
+}
+.mb-tile img {
+  transition: transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mb-tile:hover img {
+  transform: scale(1.045);
+}
+
 /* TipTap editor prose styles */
 .ProseMirror h2 {
   font-size: 1.1rem;

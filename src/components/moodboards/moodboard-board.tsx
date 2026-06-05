@@ -94,20 +94,23 @@ export function MoodboardBoard({ moodboardId, initialItems }: MoodboardBoardProp
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-3">
         <Button
           size="sm"
           onClick={() => setShowForm((v) => !v)}
           variant={showForm ? "default" : "outline"}
+          className="gap-1.5"
         >
-          <Plus className="h-4 w-4 mr-2" />
-          Ajouter
+          <Plus className={`h-3.5 w-3.5 transition-transform duration-300 ${showForm ? "rotate-45" : ""}`} />
+          {showForm ? "Fermer" : "Ajouter une référence"}
         </Button>
-        <span className="text-sm text-slate-400">{items.length} image{items.length !== 1 ? "s" : ""}</span>
+        <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-400">
+          {items.length} image{items.length !== 1 ? "s" : ""}
+        </span>
       </div>
 
       {showForm && (
-        <div className="bg-white border border-slate-200/60 rounded-xl overflow-hidden">
+        <div className="premium-fade-up overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
           {/* Mode tabs */}
           <div className="flex border-b border-slate-100">
             <button
@@ -160,16 +163,18 @@ export function MoodboardBoard({ moodboardId, initialItems }: MoodboardBoardProp
                   </div>
                 </div>
                 <div
-                  className="border-2 border-dashed border-slate-200 rounded-xl p-10 text-center cursor-pointer hover:bg-slate-50 hover:border-primary/30 transition-colors"
+                  className="group/drop cursor-pointer rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/40 p-10 text-center transition-colors hover:border-primary/40 hover:bg-primary/[0.03]"
                   onClick={() => fileRef.current?.click()}
                 >
                   {uploading ? (
-                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-slate-400" />
+                    <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
                   ) : (
                     <>
-                      <ImageIcon className="h-8 w-8 mx-auto mb-2 text-slate-300" />
-                      <p className="text-sm text-slate-500 font-medium">Cliquez pour choisir une image</p>
-                      <p className="text-xs text-slate-400 mt-1">JPG, PNG, WebP · max 10 Mo</p>
+                      <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-slate-100 transition-transform duration-300 group-hover/drop:-translate-y-0.5">
+                        <ImageIcon className="h-6 w-6 text-slate-300 transition-colors group-hover/drop:text-primary/70" />
+                      </div>
+                      <p className="text-sm font-medium text-slate-600">Cliquez pour choisir une image</p>
+                      <p className="mt-1 text-xs text-slate-400">JPG, PNG, WebP · max 10 Mo</p>
                     </>
                   )}
                 </div>
@@ -223,37 +228,38 @@ export function MoodboardBoard({ moodboardId, initialItems }: MoodboardBoardProp
       )}
 
       {items.length > 0 ? (
-        <div className="columns-2 sm:columns-3 lg:columns-4 gap-3 space-y-3">
-          {items.map((item) => (
+        <div className="columns-2 gap-3 space-y-3 sm:columns-3 lg:columns-4">
+          {items.map((item, i) => (
             <div
               key={item.id}
-              className="break-inside-avoid group relative rounded-xl overflow-hidden border border-slate-200/60 bg-white shadow-sm"
+              className="mb-tile premium-fade-up group relative block break-inside-avoid overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-sm"
+              style={{ animationDelay: `${Math.min(i, 16) * 35}ms` }}
             >
-              <div className="relative">
+              <div className="relative overflow-hidden">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={item.url}
                   alt={item.caption ?? "Moodboard image"}
-                  className="w-full object-cover block"
+                  className="block w-full object-cover"
                   onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                 />
                 <button
                   onClick={() => handleRemove(item.id)}
                   disabled={isPending}
-                  className="absolute top-2 right-2 h-7 w-7 rounded-full bg-white/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm hover:bg-red-50 hover:text-red-500"
+                  className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/80 text-slate-600 opacity-0 shadow-sm backdrop-blur-md transition-all duration-200 hover:bg-red-50 hover:text-red-500 group-hover:opacity-100"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
               {(item.caption || item.source) && (
-                <div className="px-3 py-2">
-                  {item.caption && <p className="text-xs font-medium text-slate-700 truncate">{item.caption}</p>}
+                <div className="px-3 py-2.5">
+                  {item.caption && <p className="truncate text-xs font-medium text-slate-700">{item.caption}</p>}
                   {item.source && normalizeExternalUrl(item.source) && (
                     <a
                       href={normalizeExternalUrl(item.source) ?? "#"}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs text-slate-400 hover:text-primary truncate mt-0.5"
+                      className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-slate-400 transition-colors hover:text-primary"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <LinkIcon className="h-3 w-3 shrink-0" />
@@ -266,10 +272,21 @@ export function MoodboardBoard({ moodboardId, initialItems }: MoodboardBoardProp
           ))}
         </div>
       ) : (
-        <div className="text-center py-16 border-2 border-dashed border-slate-200 rounded-xl">
-          <ImageIcon className="h-10 w-10 mx-auto mb-3 text-slate-200" />
-          <p className="text-sm font-medium text-slate-500">Aucune image pour l'instant</p>
-          <p className="text-xs text-slate-400 mt-1">Ajoutez des références visuelles, matériaux, ambiances…</p>
+        <div className="relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white px-8 py-16 text-center">
+          <div className="mb-atmos" aria-hidden />
+          <div className="relative z-10 mx-auto flex max-w-xs flex-col items-center">
+            <div className="relative mb-5 h-16 w-16">
+              <div className="absolute inset-0 rounded-2xl border border-slate-200" />
+              <div className="absolute inset-2 rounded-xl border border-dashed border-slate-200" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <ImageIcon className="h-6 w-6 text-slate-300" />
+              </div>
+            </div>
+            <p className="section-title text-lg text-slate-900">Le mur est nu</p>
+            <p className="mt-1.5 text-xs leading-relaxed text-slate-400">
+              Ajoutez vos premières références — matériaux, ambiances, palettes…
+            </p>
+          </div>
         </div>
       )}
       <ConfirmDialog
