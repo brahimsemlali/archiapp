@@ -1,5 +1,6 @@
 import { Document, Page, Text, View, StyleSheet, Image } from "@react-pdf/renderer";
 import type { DevisItem } from "@/lib/validators/devis";
+import { formatMoney } from "@/lib/format";
 
 const styles = StyleSheet.create({
   page: { fontFamily: "Helvetica", fontSize: 10, paddingTop: 50, paddingBottom: 50, paddingHorizontal: 50, color: "#1a1a1a", lineHeight: 1.5 },
@@ -39,9 +40,6 @@ const styles = StyleSheet.create({
   footer: { position: "absolute", bottom: 30, left: 50, right: 50, textAlign: "center", fontSize: 8, color: "#d1d5db" },
 });
 
-function formatMAD(centimes: number) {
-  return (centimes / 100).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " DH";
-}
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
 }
@@ -51,9 +49,12 @@ interface FactureTemplateProps {
   client: { name: string; address?: string | null; ice?: string | null; cin?: string | null } | null;
   project: { title: string } | null;
   firm: { firm_name?: string | null; architect_name?: string | null; address?: string | null; phone?: string | null; email?: string | null; ice?: string | null; iban?: string | null; logo_url?: string | null } | null;
+  currency?: string;
+  taxLabel?: string;
 }
 
-export function FacturePdf({ facture, client, project, firm }: FactureTemplateProps) {
+export function FacturePdf({ facture, client, project, firm, currency = "MAD", taxLabel = "TVA" }: FactureTemplateProps) {
+  const money = (centimes: number) => formatMoney(centimes, currency);
   const isOverdue = facture.dueDate && !facture.paidAt && new Date(facture.dueDate) < new Date();
 
   return (
@@ -119,9 +120,9 @@ export function FacturePdf({ facture, client, project, firm }: FactureTemplatePr
             <Text style={[styles.tableCell, { flex: 4 }]}>{item.description}</Text>
             <Text style={[styles.tableCell, { flex: 1, textAlign: "center" }]}>{item.quantity}</Text>
             <Text style={[styles.tableCell, { flex: 1, textAlign: "center", color: "#9ca3af" }]}>{item.unit}</Text>
-            <Text style={[styles.tableCell, { flex: 1.5, textAlign: "right" }]}>{formatMAD(item.unitPriceCentimes)}</Text>
+            <Text style={[styles.tableCell, { flex: 1.5, textAlign: "right" }]}>{money(item.unitPriceCentimes)}</Text>
             <Text style={[styles.tableCell, { flex: 1.5, textAlign: "right", fontFamily: "Helvetica-Bold" }]}>
-              {formatMAD(Math.round(item.quantity * item.unitPriceCentimes))}
+              {money(Math.round(item.quantity * item.unitPriceCentimes))}
             </Text>
           </View>
         ))}
@@ -131,20 +132,20 @@ export function FacturePdf({ facture, client, project, firm }: FactureTemplatePr
           <View style={styles.totalsBox}>
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Sous-total HT</Text>
-              <Text style={styles.totalValue}>{formatMAD(facture.subtotalCentimes)}</Text>
+              <Text style={styles.totalValue}>{money(facture.subtotalCentimes)}</Text>
             </View>
             <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>TVA {facture.tvaRate}%</Text>
-              <Text style={styles.totalValue}>{formatMAD(facture.tvaCentimes)}</Text>
+              <Text style={styles.totalLabel}>{taxLabel} {facture.tvaRate}%</Text>
+              <Text style={styles.totalValue}>{money(facture.tvaCentimes)}</Text>
             </View>
             <View style={styles.grandTotal}>
               <Text style={styles.grandTotalLabel}>Total TTC</Text>
-              <Text style={styles.grandTotalValue}>{formatMAD(facture.totalCentimes)}</Text>
+              <Text style={styles.grandTotalValue}>{money(facture.totalCentimes)}</Text>
             </View>
             {facture.paidAt && (
               <View style={styles.paidRow}>
                 <Text style={styles.paidLabel}>Payé le {formatDate(facture.paidAt)}</Text>
-                <Text style={styles.paidValue}>{formatMAD(facture.totalCentimes)}</Text>
+                <Text style={styles.paidValue}>{money(facture.totalCentimes)}</Text>
               </View>
             )}
           </View>

@@ -6,10 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Upload, CheckCircle2, AlertCircle, HelpCircle, Loader2, FileText } from "lucide-react";
 import { parseBankCsvAction, matchBankLinesAction, markFacturePaidFromBankAction, type MatchedLine } from "@/lib/actions/bank-reconciliation";
-import { formatMAD } from "@/lib/format";
+import { useLocalization } from "@/components/localization-provider";
 import { cn } from "@/lib/utils";
 
 export function BankReconciliation() {
+  const { money } = useLocalization();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [matches, setMatches] = useState<MatchedLine[] | null>(null);
@@ -138,8 +139,8 @@ export function BankReconciliation() {
                       )}
                     </div>
                     <p className="text-xs text-slate-400">
-                      {match.bankLine.date} · {formatMAD(match.bankLine.amount_centimes / 100)}
-                      {match.factureNumber && ` → Facture ${match.factureNumber} (${formatMAD((match.factureAmount ?? 0) / 100)})`}
+                      {match.bankLine.date} · {money(match.bankLine.amount_centimes / 100)}
+                      {match.factureNumber && ` → Facture ${match.factureNumber} (${money((match.factureAmount ?? 0) / 100)})`}
                     </p>
                   </div>
 

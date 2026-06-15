@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { formatMAD } from "@/lib/format";
+import { useLocalization } from "@/components/localization-provider";
 import { createProspectAction, updateProspectAction, deleteProspectAction } from "@/lib/actions/prospects";
 import type { ProspectRow, ProspectValues } from "@/lib/actions/prospects";
 import { Button } from "@/components/ui/button";
@@ -84,6 +84,7 @@ function prospectMessage(p: Prospect): string {
 }
 
 export function ProspectsPipeline({ initialProspects }: Props) {
+  const { money } = useLocalization();
   const t = useTranslations("common");
   const [prospectSnapshot, setProspectSnapshot] = useState({
     source: initialProspects,
@@ -232,21 +233,21 @@ export function ProspectsPipeline({ initialProspects }: Props) {
             <TrendingUp className="h-3.5 w-3.5 text-[#64748B]" />
             <p className="text-xs text-[#64748B]">Pipeline total</p>
           </div>
-          <p className="text-lg font-bold text-[#0B1220]">{totalPipeline > 0 ? formatMAD(totalPipeline) : "—"}</p>
+          <p className="text-lg font-bold text-[#0B1220]">{totalPipeline > 0 ? money(totalPipeline) : "—"}</p>
         </div>
         <div className="bg-white border border-[#E5E7EB] rounded-xl p-4">
           <div className="flex items-center gap-2 mb-1">
             <Percent className="h-3.5 w-3.5 text-[#2F8F5C]" />
             <p className="text-xs text-[#64748B]">Prévision pondérée</p>
           </div>
-          <p className="text-lg font-bold text-[#0B1220]">{weightedPipeline > 0 ? formatMAD(weightedPipeline) : "—"}</p>
+          <p className="text-lg font-bold text-[#0B1220]">{weightedPipeline > 0 ? money(weightedPipeline) : "—"}</p>
         </div>
         <div className="bg-white border border-[#E5E7EB] rounded-xl p-4">
           <div className="flex items-center gap-2 mb-1">
             <DollarSign className="h-3.5 w-3.5 text-green-600" />
             <p className="text-xs text-[#64748B]">Gagné</p>
           </div>
-          <p className="text-lg font-bold text-green-700">{totalGagne > 0 ? formatMAD(totalGagne) : "—"}</p>
+          <p className="text-lg font-bold text-green-700">{totalGagne > 0 ? money(totalGagne) : "—"}</p>
         </div>
         <div className="bg-white border border-[#E5E7EB] rounded-xl p-4">
           <div className="flex items-center gap-2 mb-1">
@@ -277,7 +278,7 @@ export function ProspectsPipeline({ initialProspects }: Props) {
               </div>
               <div className="flex items-center justify-between text-[10px] text-[#64748B]">
                 <span>Prob. {Math.round(stage.probability * 100)}%</span>
-                <span>{stageWeighted > 0 ? formatMAD(stageWeighted) : "—"}</span>
+                <span>{stageWeighted > 0 ? money(stageWeighted) : "—"}</span>
               </div>
               <div className="space-y-2">
                 {stageProspects.map((p) => {
@@ -325,9 +326,9 @@ export function ProspectsPipeline({ initialProspects }: Props) {
                     </div>
                     {p.estimated_value_centimes > 0 && (
                       <div className="flex items-center justify-between gap-2 text-[11px] font-semibold text-[#0B1220]">
-                        <span>{formatMAD(p.estimated_value_centimes)}</span>
+                        <span>{money(p.estimated_value_centimes)}</span>
                         {stage.probability > 0 && stage.probability < 1 && (
-                          <span className="text-[#64748B]">{formatMAD(Math.round(p.estimated_value_centimes * stage.probability))}</span>
+                          <span className="text-[#64748B]">{money(Math.round(p.estimated_value_centimes * stage.probability))}</span>
                         )}
                       </div>
                     )}

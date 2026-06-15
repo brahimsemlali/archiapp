@@ -1,6 +1,6 @@
 import { AlertTriangle, CheckCircle2, Gauge, TimerReset } from "lucide-react";
 import type { ReactNode } from "react";
-import { formatMAD } from "@/lib/format";
+import { useLocalization } from "@/components/localization-provider";
 
 interface ProjectHealthCardProps {
   budgetEstimateCentimes: number | null;
@@ -27,6 +27,7 @@ export function ProjectHealthCard({
   highIssuesCount,
   overdueTasksCount,
 }: ProjectHealthCardProps) {
+  const { money } = useLocalization();
   const today = new Date();
   const deadline = targetEndDate ? new Date(`${targetEndDate}T00:00:00`) : null;
   const daysLeft = deadline ? Math.ceil((deadline.getTime() - today.getTime()) / 86400000) : null;
@@ -112,21 +113,21 @@ export function ProjectHealthCard({
       <div className="mt-4 grid gap-3 sm:grid-cols-4">
         <Metric
           label="Honoraires"
-          value={feesCentimes ? formatMAD(feesCentimes) : "—"}
+          value={feesCentimes ? money(feesCentimes) : "—"}
           sub={feeBurnPct !== null ? `${feeBurnPct}% consommé` : undefined}
           danger={feeBurnPct !== null && feeBurnPct >= 90}
           icon={<Gauge className="h-3.5 w-3.5" />}
         />
         <Metric
           label="Facturé"
-          value={totalInvoicedCentimes > 0 ? formatMAD(totalInvoicedCentimes) : "—"}
+          value={totalInvoicedCentimes > 0 ? money(totalInvoicedCentimes) : "—"}
           sub={billingPct !== null ? `${billingPct}% des honoraires` : undefined}
           danger={billingPct !== null && feeBurnPct !== null && billingPct < feeBurnPct}
           icon={<Gauge className="h-3.5 w-3.5" />}
         />
         <Metric
           label="Budget temps"
-          value={budgetEstimateCentimes ? formatMAD(budgetEstimateCentimes) : "—"}
+          value={budgetEstimateCentimes ? money(budgetEstimateCentimes) : "—"}
           sub={budgetPct !== null ? `${budgetPct}% consommé` : undefined}
           danger={remainingBudget !== null && remainingBudget < 0}
           icon={<Gauge className="h-3.5 w-3.5" />}

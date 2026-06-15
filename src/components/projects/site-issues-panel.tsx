@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useLocalization } from "@/components/localization-provider";
 import type { FormEvent } from "react";
 import { CheckCircle2, Loader2, Plus, UserRound } from "lucide-react";
 import { toast } from "sonner";
@@ -53,6 +54,7 @@ export function SiteIssuesPanel({
   issues: SiteIssueRow[];
   members: Member[];
 }) {
+  const { formatDateShort } = useLocalization();
   const [issueSnapshot, setIssueSnapshot] = useState({ source: issues, items: issues });
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -224,7 +226,7 @@ export function SiteIssuesPanel({
                   {issue.description && <p className="mt-1 text-sm text-[#475569]">{issue.description}</p>}
                   <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-[#64748B]">
                     {issue.assigned_to && <span className="inline-flex items-center gap-1"><UserRound className="h-3 w-3" />{issue.assigned_to.slice(0, 8)}</span>}
-                    {issue.due_date && <span>Échéance {new Date(`${issue.due_date}T00:00:00`).toLocaleDateString("fr-FR")}</span>}
+                    {issue.due_date && <span>Échéance {formatDateShort(issue.due_date)}</span>}
                     {issue.site_visit_id && <span>Depuis une visite</span>}
                   </div>
                 </div>

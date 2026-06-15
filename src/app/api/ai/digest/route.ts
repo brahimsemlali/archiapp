@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { AI_MODEL, anthropic, messageText } from "@/lib/ai/anthropic";
-import { formatMAD } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
+import { getWorkspaceLocalization } from "@/lib/localization";
 import { requireActiveWorkspace } from "@/lib/workspace";
 import { assertAiUsageAvailable, recordAiUsage } from "@/lib/ai/usage";
 
@@ -14,6 +15,8 @@ export async function POST(req: NextRequest) {
   const { workspaceId } = workspace.data;
   const quota = await assertAiUsageAvailable(supabase, workspaceId);
   if (!quota.ok) return NextResponse.json({ error: quota.error }, { status: quota.code === "rate_limited" ? 429 : 402 });
+  const { currency } = await getWorkspaceLocalization(supabase, workspaceId);
+  const money = (centimes: number) => formatMoney(centimes, currency);
 
   let data: {
     overdueInvoices: Array<{ number: string; amount: number; daysLate: number; client: string }>;
@@ -34,8 +37,8 @@ export async function POST(req: NextRequest) {
 Date du jour : ${today}.
 
 Données de santé du cabinet :
-- Total à encaisser : ${formatMAD(data.totalOutstanding)}
-- Factures en retard (${data.overdueInvoices.length}) : ${data.overdueInvoices.map((f) => `${f.number} (${f.client}, ${f.daysLate}j de retard, ${formatMAD(f.amount)})`).join(" | ") || "Aucune"}
+- Total à encaisser : ${money(data.totalOutstanding)}
+- Factures en retard (${data.overdueInvoices.length}) : ${data.overdueInvoices.map((f) => `${f.number} (${f.client}, ${f.daysLate}j de retard, ${money(f.amount)})`).join(" | ") || "Aucune"}
 - Devis expirant bientôt (${data.expiringDevis.length}) : ${data.expiringDevis.map((d) => `${d.number} (dans ${d.daysLeft}j)`).join(" | ") || "Aucun"}
 - Projets dépassant le budget temps (${data.budgetOverruns.length}) : ${data.budgetOverruns.map((b) => `${b.project} (+${b.overrunPct}%)`).join(" | ") || "Aucun"}
 - Deadlines projets imminentes (${data.upcomingDeadlines.length}) : ${data.upcomingDeadlines.map((d) => `${d.project} (dans ${d.daysLeft}j)`).join(" | ") || "Aucune"}

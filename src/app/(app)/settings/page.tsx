@@ -108,6 +108,7 @@ export default async function SettingsPage({
         </div>
         <PlanUsage
           plan={plan}
+          locale={locale}
           billingError={params.billingError ?? null}
           subscription={{
             status: workspaceResult.data?.subscription_status ?? null,

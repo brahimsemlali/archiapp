@@ -6,10 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, User, Building2, Phone, Mail, MapPin, Edit, Plus, FileText, Receipt, BadgeDollarSign, TrendingUp, Globe } from "lucide-react";
-import { ClientPortalShare, ArchitectReplyForm } from "@/components/portal/client-portal-actions";
-import { formatDate, formatRelative, formatMAD } from "@/lib/format";
-import { PHASE_LABELS, PHASE_COLORS } from "@/lib/constants";
+import { ClientPortalShare, ClientPortalSharing, ArchitectReplyForm } from "@/components/portal/client-portal-actions";
+import { formatMoney } from "@/lib/format";
+import { getWorkspaceLocalization } from "@/lib/localization";
+import { getServerFormatters } from "@/lib/formatters-server";
+import { PHASE_COLORS } from "@/lib/constants";
+import { getTranslations } from "next-intl/server";
 import { getWorkspaceId } from "@/lib/workspace";
+import { resolveVisibility, getPortalUpdates } from "@/lib/portal-sections";
 
 const CONTRACT_STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
   brouillon: "secondary",
@@ -64,6 +68,10 @@ export default async function ClientDetailPage({
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId(supabase);
   if (!workspaceId) notFound();
+  const { currency, timezone } = await getWorkspaceLocalization(supabase, workspaceId);
+  const { formatDate, formatRelative } = await getServerFormatters(timezone);
+  const tPhase = await getTranslations("phase");
+  const money = (centimes: number) => formatMoney(centimes, currency);
 
   const [
     { data: client },
@@ -201,20 +209,20 @@ export default async function ClientDetailPage({
           <CardContent className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-0">
             <div>
               <p className="text-xs text-muted-foreground">Devis acceptés</p>
-              <p className="text-lg font-bold">{totalDevis > 0 ? formatMAD(totalDevis) : "—"}</p>
+              <p className="text-lg font-bold">{totalDevis > 0 ? money(totalDevis) : "—"}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Facturé</p>
-              <p className="text-lg font-bold">{totalInvoiced > 0 ? formatMAD(totalInvoiced) : "—"}</p>
+              <p className="text-lg font-bold">{totalInvoiced > 0 ? money(totalInvoiced) : "—"}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Encaissé</p>
-              <p className="text-lg font-bold text-green-700">{totalPaid > 0 ? formatMAD(totalPaid) : "—"}</p>
+              <p className="text-lg font-bold text-green-700">{totalPaid > 0 ? money(totalPaid) : "—"}</p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">En attente</p>
               <p className={`text-lg font-bold ${totalOutstanding > 0 ? "text-amber-700" : ""}`}>
-                {totalOutstanding > 0 ? formatMAD(totalOutstanding) : "—"}
+                {totalOutstanding > 0 ? money(totalOutstanding) : "—"}
               </p>
             </div>
           </CardContent>
@@ -266,7 +274,7 @@ export default async function ClientDetailPage({
                       </p>
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PHASE_COLORS[project.phase] ?? "bg-gray-100 text-gray-700"}`}>
-                      {PHASE_LABELS[project.phase] ?? project.phase}
+                      {tPhase.has(project.phase) ? tPhase(project.phase) : project.phase}
                     </span>
                   </div>
                 </Link>
@@ -347,7 +355,7 @@ export default async function ClientDetailPage({
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{formatMAD(d.total_centimes)}</span>
+                      <span className="text-sm font-medium">{money(d.total_centimes)}</span>
                       <Badge variant={DEVIS_STATUS_VARIANT[d.status] ?? "secondary"} className="text-xs">
                         {DEVIS_STATUS_LABELS[d.status] ?? d.status}
                       </Badge>
@@ -394,7 +402,7 @@ export default async function ClientDetailPage({
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{formatMAD(f.total_centimes)}</span>
+                        <span className="text-sm font-medium">{money(f.total_centimes)}</span>
                         <Badge variant={FACTURE_STATUS_VARIANT[f.status] ?? "secondary"} className="text-xs">
                           {FACTURE_STATUS_LABELS[f.status] ?? f.status}
                         </Badge>
@@ -458,6 +466,14 @@ export default async function ClientDetailPage({
               />
             </CardContent>
           </Card>
+
+          {clientPortalLink && (
+            <ClientPortalSharing
+              clientId={id}
+              initialVisibility={resolveVisibility(client.metadata)}
+              initialUpdates={getPortalUpdates(client.metadata)}
+            />
+          )}
 
           {clientPortalLink && (
             <Card>

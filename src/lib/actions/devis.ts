@@ -7,7 +7,8 @@ import type { Result } from "@/types";
 import { devisFormSchema, type DevisFormValues } from "@/lib/validators/devis";
 import { sendEmail } from "@/lib/email/send";
 import { devisSentEmail, APP_URL } from "@/lib/email/templates";
-import { formatMAD, formatDate } from "@/lib/format";
+import { formatMoney, formatDate } from "@/lib/format";
+import { resolveLocalization } from "@/lib/country-packs";
 import { dbError } from "@/lib/db-error";
 
 
@@ -156,7 +157,7 @@ export async function updateDevisStatusAction(
   if (status === "envoye") {
     const { data: firm } = await supabase
       .from("firm_profile")
-      .select("firm_name")
+      .select("*")
       .eq("workspace_id", workspaceId)
       .maybeSingle();
 
@@ -179,7 +180,7 @@ export async function updateDevisStatusAction(
       clientName: client?.name ?? "Client",
       devisNumber: devis.number ?? id,
       devisTitle: devis.title ?? "Devis",
-      totalTTC: formatMAD(devis.total_centimes ?? 0),
+      totalTTC: formatMoney(devis.total_centimes ?? 0, resolveLocalization(firm).currency),
       validUntil: devis.valid_until ? formatDate(devis.valid_until) : "—",
       portalUrl,
     });

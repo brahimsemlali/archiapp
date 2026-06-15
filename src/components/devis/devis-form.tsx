@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus, Trash2, Loader2 } from "lucide-react";
-import { formatMAD } from "@/lib/format";
+import { useLocalization } from "@/components/localization-provider";
 
 interface DevisFormProps {
   clients: { id: string; name: string }[];
@@ -41,6 +41,7 @@ function newItem(): DevisItem {
 }
 
 export function DevisForm({ clients, projects, defaultValues, devisId }: DevisFormProps) {
+  const { money, taxLabel } = useLocalization();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
@@ -225,7 +226,7 @@ export function DevisForm({ clients, projects, defaultValues, devisId }: DevisFo
                     }
                   />
                   <p className="text-xs text-muted-foreground text-right px-1">
-                    = {formatMAD(itemTotal)}
+                    = {money(itemTotal)}
                   </p>
                 </div>
                 <Button
@@ -252,7 +253,7 @@ export function DevisForm({ clients, projects, defaultValues, devisId }: DevisFo
       <div className="flex flex-col sm:flex-row gap-6 justify-between">
         <div className="space-y-3 max-w-xs">
           <div className="space-y-1.5">
-            <Label htmlFor="tvaRate">TVA (%)</Label>
+            <Label htmlFor="tvaRate">{taxLabel} (%)</Label>
             <Input
               id="tvaRate"
               type="number"
@@ -277,15 +278,15 @@ export function DevisForm({ clients, projects, defaultValues, devisId }: DevisFo
         <div className="bg-gray-50 border rounded-xl p-4 space-y-2 min-w-[200px] self-start">
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Sous-total HT</span>
-            <span className="font-medium">{formatMAD(subtotal)}</span>
+            <span className="font-medium">{money(subtotal)}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">TVA {watchTvaRate}%</span>
-            <span className="font-medium">{formatMAD(tva)}</span>
+            <span className="text-muted-foreground">{taxLabel} {watchTvaRate}%</span>
+            <span className="font-medium">{money(tva)}</span>
           </div>
           <div className="flex justify-between text-base font-bold border-t pt-2 mt-2">
             <span>Total TTC</span>
-            <span className="text-primary">{formatMAD(total)}</span>
+            <span className="text-primary">{money(total)}</span>
           </div>
         </div>
       </div>

@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
 import { sendWelcomeEmailAction } from "@/lib/actions/auth";
 import { dbError } from "@/lib/db-error";
+import { COUNTRY_PACKS, SUPPORTED_CURRENCIES, getCountryPack } from "@/lib/country-packs";
 
 export interface FirmProfileValues {
   firmName?: string;
@@ -19,6 +20,9 @@ export interface FirmProfileValues {
   cnss?: string;
   patente?: string;
   iban?: string;
+  country?: string;
+  currency?: string;
+  defaultTaxRate?: number;
 }
 
 export async function updateFirmProfileAction(values: FirmProfileValues): Promise<Result<void>> {
@@ -38,6 +42,26 @@ export async function updateFirmProfileAction(values: FirmProfileValues): Promis
   const cnss = values.cnss?.trim() || null;
   const patente = values.patente?.trim() || null;
   const iban = values.iban?.trim() || null;
+
+  // Localization (worldwide.md W1) — keys are only included when provided so
+  // the upsert keeps working on databases that predate the localization migration
+  const localizationFields: Record<string, string | number> = {};
+  if (values.country !== undefined) {
+    if (!(values.country in COUNTRY_PACKS)) return { ok: false, error: "Pays non reconnu." };
+    localizationFields.country = values.country;
+    // timezone follows the country pack until a dedicated control exists (W2)
+    localizationFields.timezone = getCountryPack(values.country).timezone;
+  }
+  if (values.currency !== undefined) {
+    if (!SUPPORTED_CURRENCIES.includes(values.currency)) return { ok: false, error: "Devise non prise en charge." };
+    localizationFields.currency = values.currency;
+  }
+  if (values.defaultTaxRate !== undefined) {
+    if (!Number.isFinite(values.defaultTaxRate) || values.defaultTaxRate < 0 || values.defaultTaxRate > 100) {
+      return { ok: false, error: "Taux de taxe invalide (0–100)." };
+    }
+    localizationFields.default_tax_rate = values.defaultTaxRate;
+  }
 
   // Check if this is the first time firm_name is being set (onboarding completion)
   const { data: existing } = await supabase
@@ -62,6 +86,7 @@ export async function updateFirmProfileAction(values: FirmProfileValues): Promis
       cnss,
       patente,
       iban,
+      ...localizationFields,
       updated_at: new Date().toISOString(),
     });
 

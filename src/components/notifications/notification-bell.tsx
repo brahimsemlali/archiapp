@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Bell } from "lucide-react";
+import { useLocale } from "next-intl";
 import { SmartNotificationsPanel, type SmartAlert } from "@/components/notifications/smart-notifications-panel";
 import { getNotificationAlertsAction } from "@/lib/actions/notifications";
 
 export function NotificationBell() {
+  const locale = useLocale();
   const [open, setOpen] = useState(false);
   const [alerts, setAlerts] = useState<SmartAlert[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -57,7 +59,7 @@ export function NotificationBell() {
 
       {open && (
         <div className="fixed inset-x-3 top-[calc(3.75rem+env(safe-area-inset-top))] z-50 max-h-[calc(100dvh-5rem)] overflow-y-auto rounded-xl shadow-xl md:absolute md:inset-auto md:end-0 md:top-11 md:w-96">
-          <SmartNotificationsPanel alerts={alerts} loading={!loaded} />
+          <SmartNotificationsPanel alerts={alerts} loading={!loaded} locale={locale} />
         </div>
       )}
     </div>

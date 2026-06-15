@@ -8,7 +8,9 @@ import {
   AlertTriangle, Settings, TrendingUp, CheckCircle2, ChevronRight,
   HardHat,
 } from "lucide-react";
-import { formatMAD, formatRelative } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
+import { resolveLocalization } from "@/lib/country-packs";
+import { getServerFormatters } from "@/lib/formatters-server";
 import { PHASE_COLORS } from "@/lib/constants";
 import { getPlanLimits } from "@/lib/billing/plans";
 import { getWorkspaceId } from "@/lib/workspace";
@@ -108,7 +110,7 @@ export default async function DashboardPage() {
       .order("due_date", { ascending: true })
       .limit(6),
     supabase.from("contracts").select("*", { count: "exact", head: true }).eq("workspace_id", workspaceId).eq("status", "brouillon"),
-    supabase.from("firm_profile").select("firm_name, architect_name").eq("workspace_id", workspaceId).single(),
+    supabase.from("firm_profile").select("*").eq("workspace_id", workspaceId).single(),
     supabase
       .from("devis")
       .select("id, number, title, total_centimes, valid_until")
@@ -140,6 +142,9 @@ export default async function DashboardPage() {
   const pendingFactures = (unpaidFactures ?? []).filter((f) => !f.due_date || f.due_date >= todayStr);
   const totalUnpaid = (unpaidFactures ?? []).reduce((s, f) => s + f.total_centimes, 0);
   const monthDelta = totalPaidLastMonth > 0 ? Math.round(((totalPaidMonth - totalPaidLastMonth) / totalPaidLastMonth) * 100) : null;
+  const { currency, timezone } = resolveLocalization(firmProfile?.data);
+  const { formatRelative, formatDateParts } = await getServerFormatters(timezone);
+  const money = (centimes: number) => formatMoney(centimes, currency);
   const missingFirmProfile = !firmProfile?.data?.firm_name;
   const hasClients = (clientsCount ?? 0) > 0;
   const hasProjects = (activeProjects?.length ?? 0) > 0;
@@ -160,7 +165,7 @@ export default async function DashboardPage() {
     await createDemoWorkspaceDataAction();
   }
 
-  const todayLabel = now.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const todayLabel = formatDateParts(now, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   // Prefer the architect's first name, then the firm name, then the email prefix —
   // so the greeting shows who they are, not "archidesk-uxtest+123".
   const architectFirstName = firmProfile?.data?.architect_name?.trim().split(/\s+/)[0];
@@ -291,7 +296,7 @@ export default async function DashboardPage() {
               <TrendingUp className="h-3.5 w-3.5 text-[#2F8F5C]" />
             </div>
             <p className="font-fraunces text-[28px] font-medium leading-none text-[#0B1220] tabnum">
-              {totalPaidMonth > 0 ? formatMAD(totalPaidMonth) : "—"}
+              {totalPaidMonth > 0 ? money(totalPaidMonth) : "—"}
             </p>
             {monthDelta !== null && (
               <p className={`text-[11.5px] font-semibold mt-2 ${monthDelta >= 0 ? "text-[#2F8F5C]" : "text-[#C75B2E]"}`}>
@@ -310,7 +315,7 @@ export default async function DashboardPage() {
               <BadgeDollarSign className={`h-3.5 w-3.5 ${overdueFactures.length > 0 ? "text-[#C75B2E]" : "text-[#ADAB9D]"}`} />
             </div>
             <p className="font-fraunces text-[28px] font-medium leading-none text-[#0B1220] tabnum">
-              {totalUnpaid > 0 ? formatMAD(totalUnpaid) : "—"}
+              {totalUnpaid > 0 ? money(totalUnpaid) : "—"}
             </p>
             {overdueFactures.length > 0 && (
               <p className="text-[11.5px] font-semibold mt-2 text-[#C75B2E]">
@@ -329,7 +334,7 @@ export default async function DashboardPage() {
               <Receipt className="h-3.5 w-3.5 text-[#2563EB]" />
             </div>
             <p className="font-fraunces text-[28px] font-medium leading-none text-[#0B1220] tabnum">
-              {totalPendingDevis > 0 ? formatMAD(totalPendingDevis) : "—"}
+              {totalPendingDevis > 0 ? money(totalPendingDevis) : "—"}
             </p>
             <p className="text-[11.5px] font-semibold mt-2 text-[#2563EB]">
               {pendingDevis?.length ?? 0} {t("invoices.pending")}
@@ -346,7 +351,7 @@ export default async function DashboardPage() {
               <TrendingUp className="h-3.5 w-3.5 text-[#ADAB9D]" />
             </div>
             <p className="font-fraunces text-[28px] font-medium leading-none text-[#0B1220] tabnum">
-              {totalYearCA > 0 ? formatMAD(totalYearCA) : "—"}
+              {totalYearCA > 0 ? money(totalYearCA) : "—"}
             </p>
             <p className="text-[11px] text-[#ADAB9D] mt-3">{t("kpi.billedThisYear")}</p>
           </div>
@@ -381,7 +386,7 @@ export default async function DashboardPage() {
                   <div className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border text-[13px] hover:shadow-sm transition-all ${urgent ? "bg-[#FCEFE6] border-[#C75B2E]/25" : "bg-[#FDF3DC] border-[#B07A1A]/20"}`}>
                     <div>
                       <span className="font-medium text-[#0B1220]">{d.number} — {d.title}</span>
-                      <span className="text-[11px] ml-2 font-semibold text-[#64748B]">{formatMAD(d.total_centimes)}</span>
+                      <span className="text-[11px] ml-2 font-semibold text-[#64748B]">{money(d.total_centimes)}</span>
                     </div>
                     <span className={`text-[10.5px] font-semibold shrink-0 ${urgent ? "text-[#C75B2E]" : "text-[#B07A1A]"}`}>
                       {daysLeft <= 0 ? t("today") : t("devisExpiring", { days: daysLeft })}
@@ -426,7 +431,7 @@ export default async function DashboardPage() {
                             <p className="text-[13px] font-medium text-[#0B1220] truncate">{f.title}</p>
                             <p className="text-[11px] text-[#64748B] mt-0.5">{client?.name ?? "—"} · {daysLate}j {t("kpi.overdue")}</p>
                           </div>
-                          <p className="text-[13px] font-semibold text-[#C75B2E] shrink-0 ml-3 tabnum">{formatMAD(f.total_centimes)}</p>
+                          <p className="text-[13px] font-semibold text-[#C75B2E] shrink-0 ml-3 tabnum">{money(f.total_centimes)}</p>
                         </div>
                       </Link>
                     );
@@ -449,7 +454,7 @@ export default async function DashboardPage() {
                               {daysLeft !== null && ` · ${t("invoices.dueIn", { days: daysLeft })}`}
                             </p>
                           </div>
-                          <p className="text-[13px] font-semibold text-[#0B1220] shrink-0 ml-3 tabnum">{formatMAD(f.total_centimes)}</p>
+                          <p className="text-[13px] font-semibold text-[#0B1220] shrink-0 ml-3 tabnum">{money(f.total_centimes)}</p>
                         </div>
                       </Link>
                     );
@@ -578,7 +583,7 @@ export default async function DashboardPage() {
                 <div className="min-w-0">
                   <p className="text-[13px] font-semibold text-[#0B1220] truncate">{nextVisit[0]!.title}</p>
                   <p className="text-[11px] text-[#64748B] mt-0.5">
-                    {new Date(nextVisit[0]!.visit_date + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })}
+                    {formatDateParts(nextVisit[0]!.visit_date, { weekday: "short", day: "numeric", month: "short" })}
                   </p>
                 </div>
               </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,7 +11,9 @@ import { toast } from "sonner";
 import { updateFirmProfileAction, type FirmProfileValues } from "@/lib/actions/settings";
 import { uploadLogoAction } from "@/lib/actions/logo";
 import { IMAGE_UPLOAD_ACCEPT, isAllowedImageFile } from "@/lib/upload-rules";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { COUNTRY_PACKS, SUPPORTED_CURRENCIES, getCountryPack, resolveLocalization, type AppLocale } from "@/lib/country-packs";
 
 interface SettingsFormProps {
   profile: {
@@ -27,6 +29,9 @@ interface SettingsFormProps {
     cnss?: string | null;
     patente?: string | null;
     iban?: string | null;
+    country?: string | null;
+    currency?: string | null;
+    default_tax_rate?: number | string | null;
   } | null;
 }
 
@@ -36,8 +41,10 @@ export function SettingsForm({ profile }: SettingsFormProps) {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const t = useTranslations("settingsForm");
+  const locale = useLocale() as AppLocale;
+  const localization = resolveLocalization(profile);
 
-  const { register, handleSubmit } = useForm<FirmProfileValues>({
+  const { register, handleSubmit, control, setValue } = useForm<FirmProfileValues>({
     defaultValues: {
       firmName: profile?.firm_name ?? "",
       architectName: profile?.architect_name ?? "",
@@ -50,8 +57,21 @@ export function SettingsForm({ profile }: SettingsFormProps) {
       cnss: profile?.cnss ?? "",
       patente: profile?.patente ?? "",
       iban: profile?.iban ?? "",
+      country: localization.country,
+      currency: localization.currency,
+      defaultTaxRate: localization.defaultTaxRate,
     },
   });
+  const country = useWatch({ control, name: "country" });
+  const currency = useWatch({ control, name: "currency" });
+
+  function handleCountryChange(code: string | null) {
+    if (!code) return;
+    const pack = getCountryPack(code);
+    setValue("country", code, { shouldDirty: true });
+    setValue("currency", pack.currency, { shouldDirty: true });
+    setValue("defaultTaxRate", pack.defaultTaxRate, { shouldDirty: true });
+  }
 
   async function onSubmit(values: FirmProfileValues) {
     setLoading(true);
@@ -143,6 +163,56 @@ export function SettingsForm({ profile }: SettingsFormProps) {
             <Input id="email" {...register("email")} type="email" />
           </div>
         </div>
+      </div>
+
+      <Separator />
+
+      <div>
+        <h3 className="text-sm font-medium mb-3">{t("localizationSection")}</h3>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="space-y-2">
+            <Label>{t("country")}</Label>
+            <Select value={country} onValueChange={handleCountryChange}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.values(COUNTRY_PACKS).map((pack) => (
+                  <SelectItem key={pack.code} value={pack.code}>
+                    {pack.labels[locale] ?? pack.labels.fr}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>{t("currency")}</Label>
+            <Select value={currency} onValueChange={(v) => v && setValue("currency", v, { shouldDirty: true })}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SUPPORTED_CURRENCIES.map((code) => (
+                  <SelectItem key={code} value={code}>
+                    {code}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="defaultTaxRate">{t("defaultTaxRate")}</Label>
+            <Input
+              id="defaultTaxRate"
+              type="number"
+              min={0}
+              max={100}
+              step={0.1}
+              {...register("defaultTaxRate", { valueAsNumber: true })}
+            />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">{t("localizationHint")}</p>
       </div>
 
       <Separator />

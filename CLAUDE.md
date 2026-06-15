@@ -168,6 +168,7 @@ Everything listed here is **already in production** and must not be broken. Buil
 
 **Settings**
 - Firm profile: logo, name, architect name, ICE, RC, IF, CNSS, patente, address, phone, email, IBAN
+- **Localisation section**: country (pack), currency, default tax rate — drives money display + tax defaults app-wide (timezone auto-derived from country)
 - **Portfolio settings**: slug, enabled toggle, tagline, specialties — controls public portfolio page
 - Team members management
 
@@ -178,8 +179,9 @@ Everything listed here is **already in production** and must not be broken. Buil
 - Pulls from `firm_profile.slug + portfolio_enabled + portfolio_featured_project_ids`
 - SEO metadata via `generateMetadata`
 
-**Localization (French + Arabic)**
+**Localization (French + English + Arabic)**
 - `src/messages/fr.json` — complete French
+- `src/messages/en.json` — complete English
 - `src/messages/ar.json` — complete Arabic translation
 - Locale stored in cookie (`locale`), switched via `setLocaleAction`
 - `dir="rtl"` set dynamically on `<html>` when `locale === "ar"`
@@ -225,7 +227,7 @@ Everything listed here is **already in production** and must not be broken. Buil
 | `workspaces` | `id`, `owner_id`, `name`, `plan`, `trial_ends_at`, `stripe_customer_id`, `account_status` |
 | `workspace_members` | `workspace_id`, `user_id`, `role` (owner\|admin\|member\|viewer), `joined_at` |
 | `workspace_invites` | `workspace_id`, `email`, `role`, `token`, `status` (pending\|accepted\|revoked), `expires_at` |
-| `firm_profile` | `workspace_id` PK, `firm_name`, `architect_name`, `logo_url`, `iban`, `ice`, `rc`, `if_number`, `cnss`, `patente`, `address`, `phone`, `email`, `slug`, `portfolio_enabled`, `portfolio_tagline`, `portfolio_specialties`, `portfolio_featured_project_ids` |
+| `firm_profile` | `workspace_id` PK, `firm_name`, `architect_name`, `logo_url`, `iban`, `ice`, `rc`, `if_number`, `cnss`, `patente`, `address`, `phone`, `email`, `slug`, `portfolio_enabled`, `portfolio_tagline`, `portfolio_specialties`, `portfolio_featured_project_ids`, `country`, `currency`, `timezone`, `default_tax_rate` (last 4 = localization, migration `20260612_worldwide_localization.sql` — **applied 2026-06-15**, all defaulted to Morocco pack) |
 | `clients` | `workspace_id`, `name`, `type`, `phone`, `email`, `address`, `ice`, `cin`, `notes`, `metadata jsonb`, `archived_at` |
 | `projects` | `workspace_id`, `client_id`, `title`, `type`, `address`, `surface_m2`, `phase`, `status`, `budget_estimate_centimes`, `fees_centimes`, `start_date`, `target_end_date`, `notes`, `metadata jsonb` (checklist + inspirations), `archived_at` |
 | `contracts` | `workspace_id`, `project_id`, `client_id`, `type`, `title`, `content_json`, `content_html`, `ai_model`, `status`, `version`, `parent_contract_id` |
@@ -267,16 +269,17 @@ create policy "ws_select" on <table>
 
 ## 4. What to build next — roadmap
 
-### Phase A — Monetization (highest priority, nothing else ships until this is done)
+> **Internationalization track:** `worldwide.md` (repo root) is the living roadmap for going global (country packs, W1–W9). W1 (localization foundation) shipped 2026-06-12. Its "config, not constants" rule applies to ALL new code (see §9).
 
-**Billing & subscriptions**
-- Stripe integration: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
-- CMI or PayDunya for Moroccan cards (alternative payment method)
-- Enforce `workspace.plan` limits: Solo (1 user, 10 projects, 5 GB, 20 AI calls/mo), Studio (3 users, unlimited projects, 50 GB, 100 AI calls), Agence (10 users, unlimited)
-- Upgrade/downgrade flow, billing portal, usage indicators in settings
-- 14-day free trial, no card upfront
-- Webhook: `invoice.paid` → activate, `subscription.deleted` → downgrade
-- Usage metering: AI calls per workspace per billing period, project count, storage bytes
+### Phase A — Monetization (BUILT — on LemonSqueezy, not Stripe; remaining: go-live verification)
+
+**Billing & subscriptions — LIVE on LemonSqueezy** (merchant of record)
+- Checkout + webhook: `src/lib/billing/lemonsqueezy.ts` + `src/app/api/billing/lemonsqueezy/webhook/route.ts`
+- Env: `LEMON_SQUEEZY_API_KEY`, `LEMON_SQUEEZY_STORE_ID`, `LEMON_SQUEEZY_STUDIO_VARIANT_ID`, `LEMON_SQUEEZY_AGENCE_VARIANT_ID`, `LEMON_SQUEEZY_WEBHOOK_SECRET`, `LEMON_SQUEEZY_TEST_MODE`
+- Plan limits enforced: `src/lib/billing/guards.ts` (`assertSeatAvailable`, `assertProjectAvailable`, `assertStorageAvailable`) + `PLAN_LIMITS` in `src/lib/billing/plans.ts` — Solo (1 user, 10 projects, 5 GB, 20 AI calls/mo), Studio (3 users, unlimited projects, 50 GB, 100 AI calls), Agence (10 users, unlimited)
+- AI usage metering: `src/lib/ai/usage.ts` (`assertAiUsageAvailable` / `recordAiUsage`)
+- 14-day free trial, no card upfront (`workspaces.trial_ends_at` + `TrialBanner` in app layout); plan usage indicators in settings (`plan-usage.tsx`)
+- **REMAINING:** production go-live check (real store keys, `LEMON_SQUEEZY_TEST_MODE=false`); CMI or PayDunya for Moroccan cards (later, alternative payment method)
 
 ### Phase B — AI depth
 
@@ -299,7 +302,7 @@ create policy "ws_select" on <table>
 - Audit trail page in architect view
 
 **Client-facing invoice payment**
-- Stripe/CMI payment link in portal invoice view
+- Payment link (LemonSqueezy or CMI) in portal invoice view
 - Auto-mark facture paid on webhook
 
 **Project portal PDF downloads**
@@ -355,7 +358,7 @@ create policy "ws_select" on <table>
 | PDF | **@react-pdf/renderer** server-side | All PDF templates |
 | i18n | **next-intl v4** | French + Arabic, locale from cookie |
 | Dates | **date-fns v4** `fr` locale | Africa/Casablanca timezone |
-| Billing | **Stripe** (international) + CMI/PayDunya | Phase A — NOT YET BUILT |
+| Billing | **LemonSqueezy** (merchant of record) | LIVE — checkout + webhook (`src/lib/billing/`); CMI/PayDunya later for local cards |
 | Email | **Resend** | Phase E — NOT YET BUILT |
 | SMS | **Twilio** | Phase E — NOT YET BUILT |
 | WhatsApp | **Meta Cloud API** | Phase B — NOT YET BUILT |
@@ -411,6 +414,7 @@ src/
 │   ├── share/[token]/            # File share viewer
 │   └── layout.tsx                # Root layout (Cairo+Jakarta+Fraunces fonts, dir RTL/LTR, next-intl)
 ├── components/
+│   ├── localization-provider.tsx # LocalizationProvider + useLocalization() — workspace currency/tax in client components
 │   ├── comments/                 # CommentsSection (polymorphic)
 │   ├── contracts/                # ContractEditor, SignaturePad, SignaturePadPortal
 │   ├── layout/                   # Sidebar, Header, MobileNav, SearchModal, LanguageSwitcher, PushNotificationToggle
@@ -425,8 +429,11 @@ src/
 │   ├── actions/                  # All server actions (one file per domain)
 │   ├── ai/                       # anthropic.ts (model constant), prompts/contract.ts
 │   ├── billing/                  # guards.ts (assertSeatAvailable, assertProjectAvailable, assertStorageAvailable), plans.ts
-│   ├── constants.ts              # PHASE_LABELS, PHASE_COLORS, PHASE_ORDER, PHASE_DELIVERABLES
-│   ├── format.ts                 # formatMAD, formatDate, formatRelative, formatFileSize
+│   ├── constants.ts              # PHASE_ORDER (stable DB keys), PHASE_COLORS. Phase/status/deliverable LABELS are i18n (messages: phase, status.project, phaseDeliverables) — see worldwide.md W3
+│   ├── country-packs.ts          # CountryPack registry (MA/DZ/TN/FR/AE/SA/INTL) + resolveLocalization — see worldwide.md
+│   ├── format.ts                 # formatMoney (currency-aware), formatMAD (deprecated), formatDate/formatDateShort/formatDayMonth/formatDateIntl (locale+tz aware via date-fns-tz), formatRelative, formatFileSize
+│   ├── formatters-server.ts      # getServerFormatters(timeZone?) — locale-aware date formatters for server components
+│   ├── localization.ts           # getWorkspaceLocalization(supabase, workspaceId) — server helper
 │   ├── i18n/request.ts           # next-intl config — locale from cookie
 │   ├── push.ts                   # sendPushNotification() server utility
 │   ├── supabase/                 # client.ts, server.ts (createClient + createServiceClient), middleware.ts
@@ -434,6 +441,7 @@ src/
 │   └── workspace.ts              # getWorkspaceId() — reads workspace_members, shared by all actions
 └── messages/
     ├── fr.json                   # French (complete)
+    ├── en.json                   # English (complete)
     └── ar.json                   # Arabic (complete)
 ```
 
@@ -493,8 +501,9 @@ src/
 - **Server Components by default.** `"use client"` only for interactivity, browser APIs, hooks
 - **Server Actions for all mutations.** API routes only for: webhooks, public share-link PDF export, AI streaming
 - **Zod schema = single source of truth** — infer types, reuse client + server
-- **Money = integers in centimes** — convert only at input edge and display edge (`formatMAD` in `src/lib/format.ts`)
-- **Dates UTC in DB, displayed `Africa/Casablanca`**
+- **Money = integers in centimes** — convert only at input edge and display edge. Display via `formatMoney(centimes, currency)` (`src/lib/format.ts`); in client components use `useLocalization().money` (provider in `(app)/layout.tsx`); in server code resolve currency via `resolveLocalization(firmProfileRow)` (`src/lib/country-packs.ts`) or `getWorkspaceLocalization(supabase, workspaceId)` (`src/lib/localization.ts`). `formatMAD` is a deprecated MAD-only shorthand.
+- **Config, not constants (worldwide.md rule):** currency, tax rate/label, timezone come from the workspace's country pack (`firm_profile.country/currency/timezone/default_tax_rate`, fallback = Morocco pack). Never hardcode "DH", literal TVA `20`, or `Africa/Casablanca` in new code. When selecting from `firm_profile`, use `select("*")` (named selects break on pre-migration databases).
+- **Dates UTC in DB, displayed locale + workspace-timezone aware.** Never call `toLocaleDateString("fr-FR")` or hardcode a locale in new code. Client: `useLocalization().formatDate/formatDateShort/formatDayMonth/formatDateParts/formatRelative`. Server components: `const { formatDate, … } = await getServerFormatters(timezone)` (`src/lib/formatters-server.ts`) — destructure with the same names so call sites read normally. Default timezone Africa/Casablanca; pass the real workspace tz where localization is already loaded. PDFs / `/admin` / AI-prompt strings stay FR by design.
 - **All strings via next-intl** — no hardcoded French in JSX
 - **Result<T> pattern** from `src/types/index.ts` — all server actions return `{ ok: true, data }` or `{ ok: false, error: string }`
 - **`getWorkspaceId(supabase)`** from `src/lib/workspace.ts` — use in every action, never inline the query
@@ -525,10 +534,13 @@ ANTHROPIC_API_KEY=
 # App
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 
-# Billing (Phase A — NOT YET SET UP)
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+# Billing (LemonSqueezy — LIVE)
+LEMON_SQUEEZY_API_KEY=
+LEMON_SQUEEZY_STORE_ID=
+LEMON_SQUEEZY_STUDIO_VARIANT_ID=
+LEMON_SQUEEZY_AGENCE_VARIANT_ID=
+LEMON_SQUEEZY_WEBHOOK_SECRET=
+LEMON_SQUEEZY_TEST_MODE=true     # set to false for production go-live
 
 # Push Notifications (generate: npx web-push generate-vapid-keys)
 # Also install: pnpm add web-push @types/web-push
@@ -621,12 +633,20 @@ APS_CLIENT_SECRET=
 
 ---
 
-*Last updated: 2026-06-01 — **Landing page fully rebuilt** (faithful Claude Design port in `src/components/landing/landing-page.tsx`: Geist + Geist Mono, blueprint motifs, animated Gantt mockup + AI feed, trilingual FR/EN, pricing from `PLAN_LIMITS`, all copy grounded in real features; CSS scoped under `.adl`). **In-app cohesion repaint** warm-ivory → cool slate/blue, accent unified to `#2563EB`; client portal + public portfolio deliberately kept warm. Added **Geist/Geist Mono** fonts. **AI subsystem hardening**: safe message-text extraction (`messageText`), try/catch on `/api/ai/*` routes, meeting-JSON `safeParse` + retry. **UX fixes**: dashboard greeting uses architect/firm name (not email prefix); devis + facture line-items reflow on mobile; dashboard stat chips moved to next-intl ICU plurals (fr/en/ar). **Note:** billing is on **LemonSqueezy** (checkout + webhook live), not Stripe — §4 (roadmap Phase A) and §5 (tech-stack Billing row) still say Stripe and are out of date. Next priority: confirm billing env/go-live readiness.*
+*Last updated: 2026-06-01 — **Landing page fully rebuilt** (faithful Claude Design port in `src/components/landing/landing-page.tsx`: Geist + Geist Mono, blueprint motifs, animated Gantt mockup + AI feed, trilingual FR/EN, pricing from `PLAN_LIMITS`, all copy grounded in real features; CSS scoped under `.adl`). **In-app cohesion repaint** warm-ivory → cool slate/blue, accent unified to `#2563EB`; client portal + public portfolio deliberately kept warm. Added **Geist/Geist Mono** fonts. **AI subsystem hardening**: safe message-text extraction (`messageText`), try/catch on `/api/ai/*` routes, meeting-JSON `safeParse` + retry. **UX fixes**: dashboard greeting uses architect/firm name (not email prefix); devis + facture line-items reflow on mobile; dashboard stat chips moved to next-intl ICU plurals (fr/en/ar). **Note:** billing is on **LemonSqueezy** (checkout + webhook live), not Stripe — §4 (roadmap Phase A) and §5 (tech-stack Billing row) still said Stripe at the time *(fixed 2026-06-12: §4/§5/§10 now reflect LemonSqueezy)*. Next priority: confirm billing env/go-live readiness.*
 
 *Update 2026-06-02 — **Legal pages completed**: full set of 5 public routes (`/mentions-legales`, `/terms` CGU, `/cgv`, `/privacy`, `/cookies`) sharing `src/components/legal/legal-shell.tsx`, all driven by a single source of truth `src/lib/legal.ts` (fill its `TODO(...)` éditeur fields to "finalize" → `isLegalEntityConfigured()` then hides the completeness notice on every page; CGV pricing renders from `PLAN_LIMITS`). Dropped the orange "brouillon" banner per founder decision (lawyer-review caveat kept as a code comment — still needs a juriste). Added a **required consent checkbox** to signup (auth i18n `acceptTerms`/`acceptRequired`, fr/en/ar) + legal links in landing footer (FR/EN) and settings. **Fixed:** legal routes are now in the `isLegalPage` allowlist in `src/lib/supabase/middleware.ts` — previously the auth middleware bounced logged-out visitors to `/login`, silently breaking even the pre-existing `/terms` footer links. Legal page bodies are FR-only (jurisdiction language) by design.*
 
 *Update 2026-06-04 — **Moodboard PDF export** (the "well-presented planche to send the client"). New: `src/lib/pdf/moodboard-template.tsx` (warm client-facing palette — cover page + uniform 2-col grid that paginates cleanly, tiles `wrap={false}`, fixed footer + page numbers), `src/lib/pdf/moodboard-images.ts` (server-side normalization — uploaded items via `storage.download(path)`, links via SSRF-safe `fetchPublicHttpUrl`; every image transcoded to JPEG with **sharp** so webp/avif uploads + Pinterest links all render; per-image try/catch skips dead links; bounded concurrency 6; **`normalizeLogo()`** transcodes the firm logo to a PNG data URI — a webp logo passed raw to react-pdf `<Image>` renders as a blank reserved box, not a crash, so the cover lost its branding + gained an empty gap; null fallback omits it cleanly), authed route `src/app/api/moodboards/[id]/pdf/route.ts` (`runtime="nodejs"`, `maxDuration=60`), and a "Télécharger le PDF" button on the moodboard detail page (shown when `items.length>0`). **New dependency: `sharp`** (added as a direct dep; was already a transitive dep of Next, so no new binary). **Fixed a latent SSRF-fetch bug:** `requestWithPinnedLookup` in `src/lib/server/url-safety.ts` used the legacy 3-arg `lookup` callback, which throws `Invalid IP address: undefined` under Node 20+ `autoSelectFamily` (default-on) — i.e. `fetchPublicHttpUrl` was broken for **every** host (also breaks moodboard link og:image extraction). Now passes the verified-public address array (`callback(null, addresses)`), preserving the SSRF pin. **Known v1 gaps:** PDF body is FR-only + the button label is hardcoded French (matches the moodboards module, which is not yet i18n'd); failed images drop silently (cover "RÉFÉRENCES" reflects only what rendered — no "N couldn't load" notice yet); not wired into the client portal "Inspirations" section (architect downloads + sends manually). `maxDuration=60` needs Vercel Pro (hobby caps at 10s).*
 
 *Update 2026-06-04b — **Logo fix extended to ALL PDF routes.** The webp-logo→blank-box bug wasn't moodboard-specific: `devis`, `facture`, and `meeting` templates all render `<Image src={firm.logo_url}>` raw (contract template has no logo). Extracted the helper to **`src/lib/pdf/logo.ts`** (`normalizeLogo()` + generic **`withNormalizedLogo(firm)`** that returns the firm with `logo_url` swapped for a PDF-safe PNG data URI). Applied `withNormalizedLogo` in every logo-bearing route: `api/devis/[id]/pdf`, `api/factures/[id]/pdf` (both the sent-snapshot **and** live paths), `api/meeting-notes/[id]/pdf`, and the public `api/portal/client/[token]/{devis,factures}/[id]/pdf`. Templates unchanged (they just receive a safe `firm.logo_url`). **Verified live** by rendering the portal devis PDF for the one real firm that has `logo.webp` (Semlali Archi / ws `151e9b1a`) — logo now renders in the header instead of a blank gap. moodboard route keeps its explicit `logoDataUri` prop (imports `normalizeLogo` from the shared module).*
+
+*Update 2026-06-15 — **W4 shipped: tax label pack-driven** (worldwide.md W4). The tax word ("TVA"/"VAT"/"Tax") now comes from the country pack's `taxLabel` (jurisdiction property, NOT UI-locale-translated — tying it to language would put "TVA" on a Gulf firm's VAT). Replaced hardcoded "TVA" in devis/facture forms + details (dropped the locale `t("tva")` render), financial-reports, and the devis/facture PDF templates (new `taxLabel` prop) wired through all 5 PDF render paths incl. the factures sent-snapshot. Tax computation was already correct (rapports sums stored per-doc `tva_centimes`, never recomputes 20%); fixed only the misleading hardcoded "(20%)" label. Convention: render tax as `{taxLabel} {rate}%` via `useLocalization().taxLabel` (client) / `resolveLocalization(firm).taxLabel` (server/PDF) — never hardcode "TVA". `/bareme` stays TVA (Moroccan). 5 new tests (44 total). Next: W5 (documents & numbering per country).*
+
+*Update 2026-06-15 — **W3 shipped: phase/status/deliverable labels → i18n** (worldwide.md W3). DB phase keys stay stable (`PHASE_ORDER` in constants); only labels localize via the `phase`, `status.project` (both already existed in fr/en/ar, just unconsumed) and new `phaseDeliverables` (arrays via `t.raw()`) namespaces. Migrated all consumers off the hardcoded `PHASE_LABELS` constant (now removed) — main pages, time module, portfolio, project-form/projects-filters selects, both portal steppers; added `phase.autre`. Dead `STATUS_LABELS` constant removed; fixed a raw `{project.status}` leak; project-form type/status selects localized (`projectType`/`status.project`). **RIBA/AIA nomenclature deferred deliberately** — the 8 keys are a Loi-MOP pipeline (with a permit stage RIBA lacks); relabeling would mislead until per-pack `PHASE_ORDER` is modeled. New convention: never hardcode phase/status labels — use the `phase`/`status.project` namespaces (`useTranslations`/`getTranslations`). 5 new tests (39 total). Next: W4 (tax engine).*
+
+*Update 2026-06-15 — **W2 shipped: locale + timezone aware dates** (worldwide.md W2). `formatDate/formatDateShort/formatDayMonth` rewritten on **`date-fns-tz`** (new dep) `formatInTimeZone` — explicit `d MMMM yyyy` pattern keeps day-first order in every locale + French byte-identical; added `formatDateIntl` for custom shapes (weekday etc., Latin digits in Arabic). `useLocalization()` now exposes the date formatters (bound to `useLocale()` + workspace tz); new `src/lib/formatters-server.ts` `getServerFormatters(timeZone?)` for server components (destructure-same-names trick → 102 call sites unchanged). Threaded through all 39 date files incl. tasks/calendar/dashboard/time-tracker + dual-use components via a `locale` prop. Default tz Africa/Casablanca (also fixes a latent UTC-on-Vercel midnight-day bug). 5 new format tests (34 total). Localization migration (W1) was applied + verified 2026-06-15. Next: W3 (phase labels → i18n).*
+
+*Update 2026-06-12 — **Worldwide foundation (W1) shipped** (see `worldwide.md`, the living roadmap for going global). New: `src/lib/country-packs.ts` (CountryPack registry MA/DZ/TN/FR/AE/SA/INTL + `resolveLocalization`), `src/lib/localization.ts` (`getWorkspaceLocalization`), `src/components/localization-provider.tsx` (`LocalizationProvider` in `(app)/layout.tsx` + `useLocalization()` hook), `formatMoney(centimes, currency)` in format.ts (`formatMAD` now a deprecated delegate; MAD output byte-identical). Settings → new "Localisation" section (country/currency/default tax rate, fr/en/ar). Currency now flows through every money surface (17 client components, all app/portal pages, emails, AI digest, devis+facture PDFs incl. snapshots); `/bareme` deliberately stays MAD. Default TVA de-hardcoded (devis/factures/recurring read `firm_profile.default_tax_rate`; recurring panel's 0.20 math fixed). **Migration `supabase/migrations/20260612_worldwide_localization.sql` is written but NOT applied** — the Supabase project (`rerngnimuseebidbixuw`) was found **paused** (free-tier auto-pause, DNS NXDOMAIN → production login/data dead; user notified to restore via dashboard). Apply with `node scripts/apply-migration.mjs <file>` (new script; falls back to Supavisor pooler probing since direct db.* hosts are IPv6-only). All new code tolerates the missing columns (select `*` + Morocco-pack fallbacks). Also fixed stale doc: `en.json` exists (app is trilingual fr/en/ar).*
 
 *Update 2026-06-04c — **Moodboard PDF reaches the client portal + two follow-ups.** (1) **Portal PDF route**: new token-scoped `api/portal/client/[token]/moodboards/[id]/pdf` — mirrors the portal devis route's security (validates the `client` share link, checks expiry + `requireWorkspaceAccountActive`, scopes the board by `client_id`), renders via the same `MoodboardPdf`. A "PDF" download button now sits in the client portal **Inspirations** section. (2) **"Couldn't load" notice**: `normalizeMoodboardImages` now returns `{ images, failed }` (was `NormalizedImage[]`); `MoodboardPdf` takes a `failedCount` prop and prints "N références n'ont pas pu être chargées … ne figurent pas dans ce document" on the cover when `failed>0` (correct FR plural) — closes the silent-drop gap noted in 06-04. Both moodboard PDF routes pass `failedCount: normalized.failed`. (3) **Portal image-expiry bug fixed**: the portal Inspirations section rendered moodboard `item.url` raw — for uploaded items that's a 1 h signed URL, so client-facing images 404'd after ~1 h. Now re-signed on render via `signInspirationItems` (same helper the in-app moodboard page uses). **Shipping note:** the moodboard/PDF code (route, template, helper, notice) landed on branch `feat/moodboard-pdf-export`; the two **portal-page** edits (the Inspirations PDF button + the re-sign) currently live uncommitted in `src/app/portal/client/[token]/page.tsx`, intermixed with a separate in-progress "client portal sharing" feature — commit them together with that work.*

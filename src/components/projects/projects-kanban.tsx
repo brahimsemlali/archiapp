@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { PHASE_LABELS, PHASE_ORDER, PHASE_COLORS } from "@/lib/constants";
-import { formatMAD } from "@/lib/format";
+import { PHASE_ORDER, PHASE_COLORS } from "@/lib/constants";
+import { useTranslations } from "next-intl";
+import { useLocalization } from "@/components/localization-provider";
 import { FolderOpen } from "lucide-react";
 
 interface KanbanProject {
@@ -19,6 +20,8 @@ interface ProjectsKanbanProps {
 }
 
 export function ProjectsKanban({ projects }: ProjectsKanbanProps) {
+  const tPhase = useTranslations("phase");
+  const { money } = useLocalization();
   const byPhase: Record<string, KanbanProject[]> = {};
   for (const phase of PHASE_ORDER) byPhase[phase] = [];
   for (const p of projects) {
@@ -34,7 +37,7 @@ export function ProjectsKanban({ projects }: ProjectsKanbanProps) {
             <div key={phase} className="w-56 shrink-0">
               <div className="flex items-center gap-2 mb-3">
                 <span className={`text-xs font-semibold px-2 py-1 rounded-full ${PHASE_COLORS[phase] ?? "bg-gray-100 text-gray-700"}`}>
-                  {PHASE_LABELS[phase] ?? phase}
+                  {tPhase.has(phase) ? tPhase(phase) : phase}
                 </span>
                 <span className="text-xs text-muted-foreground">{cols.length}</span>
               </div>
@@ -49,7 +52,7 @@ export function ProjectsKanban({ projects }: ProjectsKanbanProps) {
                         <p className="text-xs text-muted-foreground mt-1 truncate">{p.clients.name}</p>
                       )}
                       {p.fees_centimes ? (
-                        <p className="text-xs font-semibold text-primary mt-2">{formatMAD(p.fees_centimes)}</p>
+                        <p className="text-xs font-semibold text-primary mt-2">{money(p.fees_centimes)}</p>
                       ) : null}
                     </div>
                   </Link>

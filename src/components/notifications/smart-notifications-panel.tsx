@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { AlertTriangle, Bell, CheckCircle2, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatDate, formatMAD } from "@/lib/format";
+import { formatDate } from "@/lib/format";
+import { useLocalization } from "@/components/localization-provider";
 
 export interface SmartAlert {
   id: string;
@@ -21,7 +22,8 @@ const TYPE_LABELS: Record<SmartAlert["type"], string> = {
   issue: "Réserve",
 };
 
-export function SmartNotificationsPanel({ alerts, loading = false }: { alerts: SmartAlert[]; loading?: boolean }) {
+export function SmartNotificationsPanel({ alerts, loading = false, locale }: { alerts: SmartAlert[]; loading?: boolean; locale?: string }) {
+  const { money } = useLocalization();
   return (
     <Card>
       <CardHeader>
@@ -53,8 +55,8 @@ export function SmartNotificationsPanel({ alerts, loading = false }: { alerts: S
                         <span className="rounded-full bg-[#F1F5F9] px-2 py-0.5 text-[11px] font-semibold text-[#475569]">
                           {TYPE_LABELS[alert.type]}
                         </span>
-                        {alert.dueDate && <span className="text-[11px] text-[#64748B]">{formatDate(alert.dueDate)}</span>}
-                        {alert.amountCentimes != null && <span className="text-[11px] font-semibold text-[#0B1220]">{formatMAD(alert.amountCentimes)}</span>}
+                        {alert.dueDate && <span className="text-[11px] text-[#64748B]">{formatDate(alert.dueDate, locale)}</span>}
+                        {alert.amountCentimes != null && <span className="text-[11px] font-semibold text-[#0B1220]">{money(alert.amountCentimes)}</span>}
                       </div>
                       <p className="mt-1 text-sm font-semibold text-[#0B1220]">{alert.title}</p>
                       <p className="mt-0.5 text-xs text-[#64748B]">{alert.detail}</p>

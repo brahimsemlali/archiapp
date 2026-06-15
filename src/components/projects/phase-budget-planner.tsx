@@ -6,8 +6,9 @@ import { Save, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PHASE_LABELS, PHASE_ORDER } from "@/lib/constants";
-import { formatMAD } from "@/lib/format";
+import { PHASE_ORDER } from "@/lib/constants";
+import { useTranslations } from "next-intl";
+import { useLocalization } from "@/components/localization-provider";
 import { cn } from "@/lib/utils";
 import { updateProjectPhaseBudgetsAction } from "@/lib/actions/projects";
 
@@ -55,6 +56,8 @@ export function PhaseBudgetPlanner({
   initialBudgets: PhaseBudgetMap;
   actuals: PhaseActualRow[];
 }) {
+  const tPhase = useTranslations("phase");
+  const { money } = useLocalization();
   const [saving, setSaving] = useState(false);
   const [rows, setRows] = useState<DraftRow[]>(() =>
     PHASE_ORDER.map((phase) => ({
@@ -118,8 +121,8 @@ export function PhaseBudgetPlanner({
         <div className="grid gap-3 sm:grid-cols-4">
           <Summary label="Heures prévues" value={totals.plannedHours > 0 ? `${Math.round(totals.plannedHours)}h` : "—"} />
           <Summary label="Heures réelles" value={actualMinutes > 0 ? formatHours(actualMinutes) : "—"} danger={hoursPct !== null && hoursPct > 100} />
-          <Summary label="Budget prévu" value={totals.plannedBudget > 0 ? formatMAD(totals.plannedBudget) : "—"} />
-          <Summary label="Coût réel" value={actualCost > 0 ? formatMAD(actualCost) : "—"} danger={budgetPct !== null && budgetPct > 100} />
+          <Summary label="Budget prévu" value={totals.plannedBudget > 0 ? money(totals.plannedBudget) : "—"} />
+          <Summary label="Coût réel" value={actualCost > 0 ? money(actualCost) : "—"} danger={budgetPct !== null && budgetPct > 100} />
         </div>
 
         {(hoursPct !== null && hoursPct > 100) || (budgetPct !== null && budgetPct > 100) ? (
@@ -151,7 +154,7 @@ export function PhaseBudgetPlanner({
 
               return (
                 <div key={row.phase} className={cn("grid grid-cols-[150px_110px_110px_1fr_100px_110px] items-center gap-3 rounded-xl border p-2 text-sm", isOver ? "border-[#F2C9B8] bg-[#FFF7F3]" : "border-[#E5E7EB] bg-white")}>
-                  <span className="font-medium text-[#0B1220]">{PHASE_LABELS[row.phase] ?? row.phase}</span>
+                  <span className="font-medium text-[#0B1220]">{tPhase.has(row.phase) ? tPhase(row.phase) : row.phase}</span>
                   <Input
                     value={row.plannedHours}
                     type="number"
@@ -180,9 +183,9 @@ export function PhaseBudgetPlanner({
                       />
                     </div>
                   </div>
-                  <span className="text-right tabular-nums text-red-700">{actual.costCentimes > 0 ? formatMAD(actual.costCentimes) : "—"}</span>
+                  <span className="text-right tabular-nums text-red-700">{actual.costCentimes > 0 ? money(actual.costCentimes) : "—"}</span>
                   <span className={cn("text-right font-semibold tabular-nums", variance < 0 ? "text-[#C75B2E]" : variance > 0 ? "text-[#2F8F5C]" : "text-muted-foreground")}>
-                    {plannedBudget > 0 ? formatMAD(variance) : "—"}
+                    {plannedBudget > 0 ? money(variance) : "—"}
                   </span>
                 </div>
               );

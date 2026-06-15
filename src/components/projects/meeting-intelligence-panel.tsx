@@ -20,7 +20,7 @@ import {
   createTimeEntryFromMeetingAction,
   deleteMeetingAction,
 } from "@/lib/actions/meeting-intelligence";
-import { formatDate } from "@/lib/format";
+import { useLocalization } from "@/components/localization-provider";
 import { MeetingPvSignaturePad } from "@/components/projects/meeting-pv-signature-pad";
 
 const MEETING_TYPE_LABELS: Record<string, string> = {
@@ -101,6 +101,7 @@ export function MeetingIntelligencePanel({
   aiEnabled: boolean;
   carryoverTasks: CarryoverTask[];
 }) {
+  const { formatDate } = useLocalization();
   const today = new Date().toISOString().slice(0, 10);
 
   const [meetingSnapshot, setMeetingSnapshot] = useState({

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Plus, HardHat, Camera, Sparkles } from "lucide-react";
-import { formatDate } from "@/lib/format";
+import { getServerFormatters } from "@/lib/formatters-server";
 import type { Observation } from "@/lib/actions/visites";
 import Image from "next/image";
 import { getWorkspaceId } from "@/lib/workspace";
@@ -29,6 +29,7 @@ export default async function VisitesPage({
   const { id } = await params;
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId(supabase);
+  const { formatDate } = await getServerFormatters();
   if (!workspaceId) notFound();
 
   const [{ data: project }, { data: visites }] = await Promise.all([

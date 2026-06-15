@@ -1,5 +1,6 @@
 import { Document, Page, Text, View, StyleSheet, Image } from "@react-pdf/renderer";
 import type { DevisItem } from "@/lib/validators/devis";
+import { formatMoney } from "@/lib/format";
 
 const styles = StyleSheet.create({
   page: { fontFamily: "Helvetica", fontSize: 10, paddingTop: 50, paddingBottom: 50, paddingHorizontal: 50, color: "#1a1a1a", lineHeight: 1.5 },
@@ -38,9 +39,6 @@ const styles = StyleSheet.create({
   footer: { position: "absolute", bottom: 30, left: 50, right: 50, textAlign: "center", fontSize: 8, color: "#d1d5db" },
 });
 
-function formatMAD(centimes: number) {
-  return (centimes / 100).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " DH";
-}
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
 }
@@ -50,9 +48,12 @@ interface DevisTemplateProps {
   client: { name: string; address?: string | null; ice?: string | null; cin?: string | null } | null;
   project: { title: string } | null;
   firm: { firm_name?: string | null; architect_name?: string | null; address?: string | null; phone?: string | null; email?: string | null; ice?: string | null; logo_url?: string | null } | null;
+  currency?: string;
+  taxLabel?: string;
 }
 
-export function DevisPdf({ devis, client, project, firm }: DevisTemplateProps) {
+export function DevisPdf({ devis, client, project, firm, currency = "MAD", taxLabel = "TVA" }: DevisTemplateProps) {
+  const money = (centimes: number) => formatMoney(centimes, currency);
   return (
     <Document>
       <Page size="A4" style={styles.page}>
@@ -105,9 +106,9 @@ export function DevisPdf({ devis, client, project, firm }: DevisTemplateProps) {
             <Text style={[styles.tableCell, { flex: 4 }]}>{item.description}</Text>
             <Text style={[styles.tableCell, { flex: 1, textAlign: "center" }]}>{item.quantity}</Text>
             <Text style={[styles.tableCell, { flex: 1, textAlign: "center", color: "#9ca3af" }]}>{item.unit}</Text>
-            <Text style={[styles.tableCell, { flex: 1.5, textAlign: "right" }]}>{formatMAD(item.unitPriceCentimes)}</Text>
+            <Text style={[styles.tableCell, { flex: 1.5, textAlign: "right" }]}>{money(item.unitPriceCentimes)}</Text>
             <Text style={[styles.tableCell, { flex: 1.5, textAlign: "right", fontFamily: "Helvetica-Bold" }]}>
-              {formatMAD(Math.round(item.quantity * item.unitPriceCentimes))}
+              {money(Math.round(item.quantity * item.unitPriceCentimes))}
             </Text>
           </View>
         ))}
@@ -117,15 +118,15 @@ export function DevisPdf({ devis, client, project, firm }: DevisTemplateProps) {
           <View style={styles.totalsBox}>
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Sous-total HT</Text>
-              <Text style={styles.totalValue}>{formatMAD(devis.subtotalCentimes)}</Text>
+              <Text style={styles.totalValue}>{money(devis.subtotalCentimes)}</Text>
             </View>
             <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>TVA {devis.tvaRate}%</Text>
-              <Text style={styles.totalValue}>{formatMAD(devis.tvaCentimes)}</Text>
+              <Text style={styles.totalLabel}>{taxLabel} {devis.tvaRate}%</Text>
+              <Text style={styles.totalValue}>{money(devis.tvaCentimes)}</Text>
             </View>
             <View style={styles.grandTotal}>
               <Text style={styles.grandTotalLabel}>Total TTC</Text>
-              <Text style={styles.grandTotalValue}>{formatMAD(devis.totalCentimes)}</Text>
+              <Text style={styles.grandTotalValue}>{money(devis.totalCentimes)}</Text>
             </View>
           </View>
         </View>

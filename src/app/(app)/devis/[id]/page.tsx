@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { formatDate } from "@/lib/format";
+import { getServerFormatters } from "@/lib/formatters-server";
 import { DevisDetail } from "@/components/devis/devis-detail";
 import type { DevisItem } from "@/lib/validators/devis";
 import { getWorkspaceId } from "@/lib/workspace";
@@ -15,6 +15,7 @@ export default async function DevisDetailPage({
   const { id } = await params;
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId(supabase);
+  const { formatDate } = await getServerFormatters();
   if (!workspaceId) notFound();
 
   const { data: devis } = await supabase

@@ -7,7 +7,8 @@ import type { Result } from "@/types";
 import { factureFormSchema, type FactureFormValues } from "@/lib/validators/facture";
 import { sendEmail } from "@/lib/email/send";
 import { factureSentEmail, APP_URL } from "@/lib/email/templates";
-import { formatMAD, formatDate } from "@/lib/format";
+import { formatMoney, formatDate } from "@/lib/format";
+import { resolveLocalization } from "@/lib/country-packs";
 import { computeDocumentTotals } from "@/lib/totals";
 import { dbError } from "@/lib/db-error";
 
@@ -260,7 +261,7 @@ export async function updateFactureStatusAction(
   if (status === "envoyee") {
     const { data: firm } = await supabase
       .from("firm_profile")
-      .select("firm_name")
+      .select("*")
       .eq("workspace_id", workspaceId)
       .maybeSingle();
 
@@ -283,7 +284,7 @@ export async function updateFactureStatusAction(
       clientName: client?.name ?? "Client",
       factureNumber: facture.number ?? id,
       factureTitle: facture.title ?? "Facture",
-      totalTTC: formatMAD(facture.total_centimes ?? 0),
+      totalTTC: formatMoney(facture.total_centimes ?? 0, resolveLocalization(firm).currency),
       dueDate: facture.due_date ? formatDate(facture.due_date) : "—",
       portalUrl,
     });

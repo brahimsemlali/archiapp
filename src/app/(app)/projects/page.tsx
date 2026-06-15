@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { FolderOpen } from "lucide-react";
-import { formatDate } from "@/lib/format";
+import { getServerFormatters } from "@/lib/formatters-server";
 import { ProjectsFilters } from "@/components/projects/projects-filters";
 import { ViewToggle } from "@/components/projects/view-toggle";
 import { PHASE_COLORS } from "@/lib/constants";
@@ -21,6 +21,7 @@ export default async function ProjectsPage({
   const ts = await getTranslations("status.project");
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId(supabase);
+  const { formatDate } = await getServerFormatters();
   if (!workspaceId) redirect("/onboarding");
 
   const [projectsRes, clientsRes] = await Promise.all([

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { DevisForm } from "@/components/devis/devis-form";
 import { getWorkspaceId } from "@/lib/workspace";
+import { getWorkspaceLocalization } from "@/lib/localization";
 import { getTranslations } from "next-intl/server";
 
 export default async function NewDevisPage({
@@ -17,7 +18,8 @@ export default async function NewDevisPage({
   const workspaceId = await getWorkspaceId(supabase);
   if (!workspaceId) redirect("/onboarding");
 
-  const [{ data: clients }, { data: projects }, { data: selectedProject }] = await Promise.all([
+  const [localization, { data: clients }, { data: projects }, { data: selectedProject }] = await Promise.all([
+    getWorkspaceLocalization(supabase, workspaceId),
     supabase.from("clients").select("id, name").eq("workspace_id", workspaceId).is("archived_at", null).order("name"),
     supabase.from("projects").select("id, title, client_id").eq("workspace_id", workspaceId).is("archived_at", null).order("title"),
     params.projectId
@@ -50,6 +52,7 @@ export default async function NewDevisPage({
         defaultValues={{
           clientId: defaultClientId,
           projectId: defaultProjectId,
+          tvaRate: localization.defaultTaxRate,
         }}
       />
     </div>

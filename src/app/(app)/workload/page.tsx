@@ -1,11 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceId } from "@/lib/workspace";
+import { getLocale } from "next-intl/server";
 import { SmartNotificationsPanel, type SmartAlert } from "@/components/notifications/smart-notifications-panel";
 import { WorkloadDashboard, type UnassignedTaskRow, type WorkloadMemberRow } from "@/components/workload/workload-dashboard";
 
 export default async function WorkloadPage() {
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId(supabase);
+  const locale = await getLocale();
 
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
@@ -166,8 +168,8 @@ export default async function WorkloadPage() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_0.55fr]">
-        <WorkloadDashboard members={memberRows} unassignedTasks={unassignedTasks} />
-        <SmartNotificationsPanel alerts={alerts} />
+        <WorkloadDashboard members={memberRows} unassignedTasks={unassignedTasks} locale={locale} />
+        <SmartNotificationsPanel alerts={alerts} locale={locale} />
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { FactureForm } from "@/components/factures/facture-form";
 import type { DevisItem } from "@/lib/validators/devis";
 import { getWorkspaceId } from "@/lib/workspace";
+import { getWorkspaceLocalization } from "@/lib/localization";
 import { getTranslations } from "next-intl/server";
 
 export default async function NewFacturePage({
@@ -18,7 +19,8 @@ export default async function NewFacturePage({
   const workspaceId = await getWorkspaceId(supabase);
   if (!workspaceId) redirect("/onboarding");
 
-  const [{ data: clients }, { data: projects }, { data: selectedProject }] = await Promise.all([
+  const [localization, { data: clients }, { data: projects }, { data: selectedProject }] = await Promise.all([
+    getWorkspaceLocalization(supabase, workspaceId),
     supabase.from("clients").select("id, name").eq("workspace_id", workspaceId).is("archived_at", null).order("name"),
     supabase.from("projects").select("id, title, client_id").eq("workspace_id", workspaceId).is("archived_at", null).order("title"),
     params.projectId
@@ -85,6 +87,7 @@ export default async function NewFacturePage({
         defaultValues={{
           clientId: defaultClientId,
           projectId: defaultProjectId,
+          tvaRate: localization.defaultTaxRate,
           ...devisDefaults,
         }}
       />

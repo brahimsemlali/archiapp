@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useLocalization } from "@/components/localization-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,6 +48,7 @@ interface TeamMembersProps {
 }
 
 export function TeamMembers({ members: initialMembers, invites: initialInvites, appUrl, currentUserRole }: TeamMembersProps) {
+  const { formatDateShort } = useLocalization();
   const [memberSnapshot, setMemberSnapshot] = useState({
     source: initialMembers,
     members: initialMembers,
@@ -193,7 +195,7 @@ export function TeamMembers({ members: initialMembers, invites: initialInvites, 
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800 truncate">{invite.email}</p>
                   <p className="text-xs text-slate-400">
-                    {ROLE_LABELS[invite.role]} · expire le {new Date(invite.expiresAt).toLocaleDateString("fr-FR")}
+                    {ROLE_LABELS[invite.role]} · expire le {formatDateShort(invite.expiresAt)}
                   </p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">

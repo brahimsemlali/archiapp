@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
-import { formatMAD } from "@/lib/format";
+import { useLocalization } from "@/components/localization-provider";
 import { TrendingUp, Clock, AlertTriangle, CheckCircle2, FileText } from "lucide-react";
 
 const MONTHS_FR = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"];
@@ -48,6 +48,7 @@ interface FinancialReportsProps {
 }
 
 export function FinancialReports({ factures, year }: FinancialReportsProps) {
+  const { money, taxLabel } = useLocalization();
   const [tab, setTab] = useState<"revenue" | "tva" | "aging">("revenue");
 
   const stats = useMemo(() => {
@@ -113,10 +114,10 @@ export function FinancialReports({ factures, year }: FinancialReportsProps) {
     <div className="space-y-6">
       {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Encaissé (TTC)" value={formatMAD(stats.totalPaid / 100)} sub={`HT: ${formatMAD(stats.htPaid / 100)}`} color="emerald" icon={CheckCircle2} />
-        <StatCard label="En attente" value={formatMAD(stats.totalPending / 100)} sub={`${stats.pending.length} factures`} color="blue" icon={Clock} />
-        <StatCard label="En retard" value={formatMAD(stats.totalOverdue / 100)} sub={`${stats.overdue.length} factures`} color="red" icon={AlertTriangle} />
-        <StatCard label="TVA collectée" value={formatMAD(stats.tvaPaid / 100)} sub={`Sur factures payées`} color="purple" icon={TrendingUp} />
+        <StatCard label="Encaissé (TTC)" value={money(stats.totalPaid / 100)} sub={`HT: ${money(stats.htPaid / 100)}`} color="emerald" icon={CheckCircle2} />
+        <StatCard label="En attente" value={money(stats.totalPending / 100)} sub={`${stats.pending.length} factures`} color="blue" icon={Clock} />
+        <StatCard label="En retard" value={money(stats.totalOverdue / 100)} sub={`${stats.overdue.length} factures`} color="red" icon={AlertTriangle} />
+        <StatCard label={`${taxLabel} collectée`} value={money(stats.tvaPaid / 100)} sub={`Sur factures payées`} color="purple" icon={TrendingUp} />
       </div>
 
       {/* Tab switcher */}
@@ -130,7 +131,7 @@ export function FinancialReports({ factures, year }: FinancialReportsProps) {
               tab === t ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
             )}
           >
-            {t === "revenue" ? "Chiffre d'affaires" : t === "tva" ? "TVA" : "Vieillissement"}
+            {t === "revenue" ? "Chiffre d'affaires" : t === "tva" ? taxLabel : "Vieillissement"}
           </button>
         ))}
       </div>
@@ -146,12 +147,12 @@ export function FinancialReports({ factures, year }: FinancialReportsProps) {
                   <div
                     className="flex-1 bg-primary/20 rounded-t transition-all hover:bg-primary/30"
                     style={{ height: `${(m.billed / stats.maxMonthly) * 100}%` }}
-                    title={`Facturé: ${formatMAD(m.billed / 100)}`}
+                    title={`Facturé: ${money(m.billed / 100)}`}
                   />
                   <div
                     className="flex-1 bg-primary rounded-t transition-all hover:bg-primary/80"
                     style={{ height: `${(m.paid / stats.maxMonthly) * 100}%` }}
-                    title={`Encaissé: ${formatMAD(m.paid / 100)}`}
+                    title={`Encaissé: ${money(m.paid / 100)}`}
                   />
                 </div>
                 <span className="text-[10px] text-slate-400">{MONTHS_FR[m.month]}</span>
@@ -172,7 +173,7 @@ export function FinancialReports({ factures, year }: FinancialReportsProps) {
       {/* TVA table */}
       {tab === "tva" && (
         <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h2 className="text-sm font-semibold text-slate-800 mb-4">Déclaration TVA — {year}</h2>
+          <h2 className="text-sm font-semibold text-slate-800 mb-4">{`Déclaration  — `}{year}</h2>
           <p className="text-xs text-slate-400 mb-4">Basé sur les factures payées dans chaque trimestre.</p>
           <div className="space-y-3">
             {tvaByQ.map((q) => (
@@ -181,19 +182,19 @@ export function FinancialReports({ factures, year }: FinancialReportsProps) {
                 <div className="flex-1 grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs text-slate-400">HT facturé</p>
-                    <p className="text-sm font-semibold text-slate-900">{formatMAD(q.htTotal / 100)}</p>
+                    <p className="text-sm font-semibold text-slate-900">{money(q.htTotal / 100)}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-400">TVA collectée (20%)</p>
-                    <p className="text-sm font-semibold text-emerald-700">{formatMAD(q.tvaCollected / 100)}</p>
+                    <p className="text-xs text-slate-400">{` collectée`}</p>
+                    <p className="text-sm font-semibold text-emerald-700">{money(q.tvaCollected / 100)}</p>
                   </div>
                 </div>
               </div>
             ))}
           </div>
           <div className="mt-4 p-3 bg-primary/5 rounded-xl flex items-center justify-between">
-            <span className="text-sm font-semibold text-slate-700">Total TVA {year}</span>
-            <span className="text-lg font-bold text-primary">{formatMAD(stats.tvaPaid / 100)}</span>
+            <span className="text-sm font-semibold text-slate-700">{`Total  `}{year}</span>
+            <span className="text-lg font-bold text-primary">{money(stats.tvaPaid / 100)}</span>
           </div>
         </div>
       )}
@@ -211,7 +212,7 @@ export function FinancialReports({ factures, year }: FinancialReportsProps) {
             ].map((bucket) => (
               <div key={bucket.label} className={cn("rounded-xl p-3", bucket.color)}>
                 <p className="text-xs font-semibold mb-1">{bucket.label}</p>
-                <p className="text-base font-bold">{formatMAD(bucket.items.reduce((s, f) => s + f.total_centimes, 0) / 100)}</p>
+                <p className="text-base font-bold">{money(bucket.items.reduce((s, f) => s + f.total_centimes, 0) / 100)}</p>
                 <p className="text-xs opacity-70">{bucket.items.length} facture{bucket.items.length !== 1 ? "s" : ""}</p>
               </div>
             ))}
@@ -229,7 +230,7 @@ export function FinancialReports({ factures, year }: FinancialReportsProps) {
                       <p className="text-sm font-medium text-slate-800 truncate">{f.number} — {f.title}</p>
                       <p className="text-xs text-slate-500">{f.clients?.name} · en retard de {daysLate}j</p>
                     </div>
-                    <span className="text-sm font-semibold text-red-700 shrink-0">{formatMAD(f.total_centimes / 100)}</span>
+                    <span className="text-sm font-semibold text-red-700 shrink-0">{money(f.total_centimes / 100)}</span>
                   </div>
                 );
               })}

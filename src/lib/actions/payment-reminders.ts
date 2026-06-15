@@ -6,7 +6,8 @@ import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
 import { sendEmail } from "@/lib/email/send";
 import { paymentReminderEmail, APP_URL } from "@/lib/email/templates";
-import { formatMAD, formatDate } from "@/lib/format";
+import { formatMoney, formatDate } from "@/lib/format";
+import { resolveLocalization } from "@/lib/country-packs";
 import { differenceInDays, parseISO } from "date-fns";
 import { dbError } from "@/lib/db-error";
 
@@ -32,7 +33,7 @@ export async function sendPaymentReminderAction(
 
   const { data: firm } = await supabase
     .from("firm_profile")
-    .select("firm_name")
+    .select("*")
     .eq("workspace_id", workspaceId)
     .maybeSingle();
 
@@ -60,7 +61,7 @@ export async function sendPaymentReminderAction(
       firmName: firm?.firm_name ?? "Votre architecte",
       clientName: clientRow?.name ?? "Client",
       factureNumber: facture.number ?? factureId,
-      totalTTC: formatMAD(facture.total_centimes ?? 0),
+      totalTTC: formatMoney(facture.total_centimes ?? 0, resolveLocalization(firm).currency),
       dueDate: factureFull.due_date ? formatDate(factureFull.due_date) : "—",
       daysOverdue: Math.max(0, daysOverdue),
       portalUrl,

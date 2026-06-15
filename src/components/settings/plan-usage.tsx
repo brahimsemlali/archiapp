@@ -2,10 +2,12 @@ import { BadgeDollarSign, Database, FolderOpen, Sparkles, Users } from "lucide-r
 import { getPlanLimits, formatLimit, type WorkspacePlan } from "@/lib/billing/plans";
 import { createBillingCheckoutAction } from "@/lib/actions/billing";
 import { isLemonBillingConfigured } from "@/lib/billing/lemonsqueezy";
+import { formatDate as fmtDate } from "@/lib/format";
 
 interface PlanUsageProps {
   plan: WorkspacePlan;
   billingError?: string | null;
+  locale?: string;
   subscription?: {
     status?: string | null;
     source?: string | null;
@@ -70,12 +72,12 @@ function UsageRow({
   );
 }
 
-function formatDate(value?: string | null): string | null {
+function formatDate(value: string | null | undefined, locale?: string): string | null {
   if (!value) return null;
-  return new Date(value).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+  return fmtDate(value, locale);
 }
 
-export function PlanUsage({ plan, usage, subscription, billingError }: PlanUsageProps) {
+export function PlanUsage({ plan, usage, subscription, billingError, locale }: PlanUsageProps) {
   const limits = getPlanLimits(plan);
   const billingConfigured = isLemonBillingConfigured();
   const storageLimitBytes = limits.storageGb * 1024 * 1024 * 1024;
@@ -140,7 +142,7 @@ export function PlanUsage({ plan, usage, subscription, billingError }: PlanUsage
         <p><span className="font-semibold text-[#0B1220]">Statut:</span> {subscription?.status ?? "manual"}</p>
         <p>
           <span className="font-semibold text-[#0B1220]">Période:</span>{" "}
-          {formatDate(subscription?.currentPeriodEnd) ?? formatDate(subscription?.trialEndsAt) ?? "Non définie"}
+          {formatDate(subscription?.currentPeriodEnd, locale) ?? formatDate(subscription?.trialEndsAt, locale) ?? "Non définie"}
         </p>
       </div>
 

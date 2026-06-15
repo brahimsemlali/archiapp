@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Plus, FileText, List, AlignLeft, Edit, Trash2, Copy, Clock } from "lucide-react";
-import { formatRelative } from "@/lib/format";
+import { useLocalization } from "@/components/localization-provider";
 
 type Template = TemplateRow;
 
@@ -32,6 +32,7 @@ const DEFAULT_CLAUSES = [
 interface Props { initialTemplates: Template[] }
 
 export function TemplatesPage({ initialTemplates }: Props) {
+  const { formatRelative } = useLocalization();
   const t = useTranslations("common");
   const [templateSnapshot, setTemplateSnapshot] = useState({
     source: initialTemplates,

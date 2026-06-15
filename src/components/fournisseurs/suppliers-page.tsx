@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { formatMAD } from "@/lib/format";
+import { useLocalization } from "@/components/localization-provider";
 import { displayExternalUrl, normalizeExternalUrl } from "@/lib/url";
 import { createSupplierAction, updateSupplierAction, deleteSupplierAction, createCatalogItemAction, updateCatalogItemAction, deleteCatalogItemAction } from "@/lib/actions/suppliers";
 import type { SupplierValues, CatalogItemValues } from "@/lib/actions/suppliers";
@@ -31,6 +31,7 @@ type CatalogItem = { id: string; supplier_id: string | null; name: string; descr
 interface Props { initialSuppliers: Supplier[]; initialItems: CatalogItem[] }
 
 export function SuppliersPage({ initialSuppliers, initialItems }: Props) {
+  const { money } = useLocalization();
   const t = useTranslations("common");
   const [supplierSnapshot, setSupplierSnapshot] = useState({
     source: initialSuppliers,
@@ -206,7 +207,7 @@ export function SuppliersPage({ initialSuppliers, initialItems }: Props) {
                   </div>
                   <span className="text-xs text-[#64748B]">{item.suppliers?.name ?? "—"}</span>
                   <span className="text-xs text-[#64748B]">{item.unit}</span>
-                  <span className="text-right font-semibold">{formatMAD(item.unit_price_centimes)}</span>
+                  <span className="text-right font-semibold">{money(item.unit_price_centimes)}</span>
                   <span className="text-xs text-[#64748B]">{item.reference ?? "—"}</span>
                   <div className="flex gap-1 justify-end">
                     <button onClick={() => { setEditingItem(item); setIForm({ supplierId: item.supplier_id ?? undefined, name: item.name, description: item.description ?? undefined, unit: item.unit, unitPriceCentimes: item.unit_price_centimes, category: item.category ?? undefined, reference: item.reference ?? undefined }); setItemOpen(true); }} className="h-7 w-7 flex items-center justify-center rounded hover:bg-white"><Edit className="h-3.5 w-3.5 text-[#64748B]" /></button>
@@ -216,7 +217,7 @@ export function SuppliersPage({ initialSuppliers, initialItems }: Props) {
                 <div className="sm:hidden">
                   <div className="flex justify-between">
                     <p className="font-medium text-sm">{item.name}</p>
-                    <p className="font-semibold text-sm">{formatMAD(item.unit_price_centimes)}/{item.unit}</p>
+                    <p className="font-semibold text-sm">{money(item.unit_price_centimes)}/{item.unit}</p>
                   </div>
                   {item.suppliers?.name && <p className="text-xs text-[#64748B]">{item.suppliers.name}</p>}
                 </div>

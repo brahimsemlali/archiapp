@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useLocalization } from "@/components/localization-provider";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -69,19 +70,8 @@ function addDays(ymd: string, n: number): string {
   return toYMD(d);
 }
 
-function fmtLong(ymd: string) {
-  return new Date(ymd + "T00:00:00").toLocaleDateString("fr-FR", {
-    weekday: "long", day: "numeric", month: "long",
-  });
-}
-
-function fmtShort(ymd: string) {
-  return new Date(ymd + "T00:00:00").toLocaleDateString("fr-FR", {
-    day: "numeric", month: "long", year: "numeric",
-  });
-}
-
 export function CalendarView({ events, projects = [], clients = [], members = [], currentUserId }: CalendarViewProps) {
+  const { formatDateParts } = useLocalization();
   const router = useRouter();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
@@ -287,7 +277,7 @@ export function CalendarView({ events, projects = [], clients = [], members = []
             <div className="flex items-center justify-between px-4 py-3.5 border-b border-[#E5E7EB]">
               <div>
                 <p className="font-fraunces text-[17px] font-medium text-[#0B1220] capitalize leading-tight">
-                  {fmtLong(popupDate)}
+                  {formatDateParts(popupDate, { weekday: "long", day: "numeric", month: "long" })}
                 </p>
                 <p className="text-xs text-[#64748B] mt-0.5">
                   {popupEvents.length === 0 ? "Aucun événement" : `${popupEvents.length} événement${popupEvents.length > 1 ? "s" : ""}`}
@@ -352,7 +342,7 @@ export function CalendarView({ events, projects = [], clients = [], members = []
             <div className="flex items-start justify-between">
               <div>
                 <p className="font-fraunces text-[18px] font-medium text-[#0B1220]">Planifié</p>
-                <p className="text-xs text-[#64748B] mt-0.5 capitalize">{fmtShort(selectedDate)}</p>
+                <p className="text-xs text-[#64748B] mt-0.5 capitalize">{formatDateParts(selectedDate, { day: "numeric", month: "long", year: "numeric" })}</p>
               </div>
               <div className="flex items-center gap-1 mt-0.5">
                 <button
@@ -461,7 +451,7 @@ export function CalendarView({ events, projects = [], clients = [], members = []
             <DialogTitle className="font-fraunces text-[20px] font-medium text-[#0B1220]">
               Nouvelle tâche
               {quickAddDate && (
-                <span className="text-[#64748B] font-normal text-base ml-2">— {fmtLong(quickAddDate)}</span>
+                <span className="text-[#64748B] font-normal text-base ml-2">— {formatDateParts(quickAddDate, { weekday: "long", day: "numeric", month: "long" })}</span>
               )}
             </DialogTitle>
           </DialogHeader>

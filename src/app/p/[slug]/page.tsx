@@ -5,11 +5,7 @@ import Link from "next/link";
 import { Building2, MapPin, Phone, Mail, CheckCircle2 } from "lucide-react";
 import type { Metadata } from "next";
 import type { InspirationItem } from "@/components/projects/inspiration-board";
-
-const PHASE_LABELS: Record<string, string> = {
-  esquisse: "Esquisse", aps: "APS", apd: "APD", pc: "PC",
-  dce: "DCE", chantier: "Chantier", reception: "Réception", termine: "Terminé",
-};
+import { getTranslations } from "next-intl/server";
 
 const TYPE_LABELS: Record<string, string> = {
   villa: "Villa", appartement: "Appartement", immeuble: "Immeuble",
@@ -36,6 +32,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function PortfolioPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const supabase = await createServiceClient();
+  const tPhase = await getTranslations("phase");
 
   const { data: firm } = await supabase
     .from("firm_profile")
@@ -172,7 +169,7 @@ export default async function PortfolioPage({ params }: { params: Promise<{ slug
                           <span className="text-xs text-slate-400">{project.surface_m2} m²</span>
                         )}
                         <span className={`text-xs px-2 py-0.5 rounded-full ${project.phase === "termine" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
-                          {PHASE_LABELS[project.phase] ?? project.phase}
+                          {tPhase.has(project.phase) ? tPhase(project.phase) : project.phase}
                         </span>
                       </div>
                     </div>

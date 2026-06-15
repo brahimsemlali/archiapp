@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
+import { useLocalization } from "@/components/localization-provider";
 import {
   DndContext,
   DragOverlay,
@@ -55,10 +56,6 @@ const PRIORITY_DOT: Record<string, string> = {
   basse:   "bg-[#2F8F5C]",
 };
 
-function formatDate(d: string) {
-  return new Date(d + "T00:00:00").toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
-}
-
 function isOverdue(d: string | null | undefined, status: string) {
   if (!d || status === "termine") return false;
   return new Date(d + "T00:00:00") < new Date(new Date().toDateString());
@@ -87,6 +84,7 @@ function KanbanCard({
   onView: (t: Task) => void;
   isDragging?: boolean;
 }) {
+  const { formatDayMonth } = useLocalization();
   const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: task.id });
   const meta = (task.metadata ?? {}) as TaskMeta;
   const checklist = meta.checklist ?? [];
@@ -152,7 +150,7 @@ function KanbanCard({
         <div className="flex items-center gap-1 mt-2">
           <CalendarDays className={cn("h-3 w-3", isOverdue(task.due_date, task.status) ? "text-[#C75B2E]" : "text-[#64748B]")} />
           <span className={cn("text-[11px] tabnum", isOverdue(task.due_date, task.status) ? "text-[#C75B2E]" : "text-[#64748B]")}>
-            {formatDate(task.due_date)}
+            {formatDayMonth(task.due_date)}
           </span>
         </div>
       )}

@@ -2,6 +2,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { Building2, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { AcceptInviteButton } from "@/components/invite/accept-invite-button";
+import { getServerFormatters } from "@/lib/formatters-server";
 
 interface Props {
   params: Promise<{ token: string }>;
@@ -11,6 +12,7 @@ export default async function InvitePage({ params }: Props) {
   const { token } = await params;
   const supabase = await createClient();
   const serviceSupabase = await createServiceClient();
+  const { formatDateShort } = await getServerFormatters();
 
   // Fetch invite info server-side. Public token rows are not exposed through anonymous RLS.
   const { data: invite } = await serviceSupabase
@@ -89,7 +91,7 @@ export default async function InvitePage({ params }: Props) {
 
           <p className="text-xs text-slate-400 mt-4 text-center">
             Invitation envoyée à {invite.email} · expire le{" "}
-            {new Date(invite.expires_at).toLocaleDateString("fr-FR")}
+            {formatDateShort(invite.expires_at)}
           </p>
         </div>
       </div>

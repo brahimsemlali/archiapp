@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useLocalization } from "@/components/localization-provider";
 import { cn } from "@/lib/utils";
 import {
   ChevronDown,
@@ -41,10 +42,6 @@ type SortKey = "title" | "priority" | "due_date" | "status" | "estimated";
 
 const PRIORITY_RANK: Record<string, number> = { haute: 0, moyenne: 1, basse: 2 };
 
-function formatDate(d: string) {
-  return new Date(d + "T00:00:00").toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
-}
-
 function isOverdue(d: string | null | undefined, status: string) {
   if (!d || status === "termine") return false;
   return new Date(d + "T00:00:00") < new Date(new Date().toDateString());
@@ -69,6 +66,7 @@ interface TaskRowProps {
 }
 
 function TaskRow({ task, currentUserId, onView, onStatusChange }: TaskRowProps) {
+  const { formatDayMonth } = useLocalization();
   const [cycling, setCycling] = useState(false);
   const meta = (task.metadata ?? {}) as TaskMeta;
   const checklist = meta.checklist ?? [];
@@ -165,7 +163,7 @@ function TaskRow({ task, currentUserId, onView, onStatusChange }: TaskRowProps) 
         {task.due_date ? (
           <>
             <CalendarDays className="h-3 w-3 shrink-0" />
-            {formatDate(task.due_date)}
+            {formatDayMonth(task.due_date)}
           </>
         ) : "—"}
       </span>

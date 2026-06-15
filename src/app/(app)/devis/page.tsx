@@ -3,7 +3,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { FileText } from "lucide-react";
-import { formatDate, formatMAD } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
+import { getWorkspaceLocalization } from "@/lib/localization";
+import { getServerFormatters } from "@/lib/formatters-server";
 import { DevisFilters } from "@/components/devis/devis-filters";
 import { getWorkspaceId } from "@/lib/workspace";
 import { getTranslations } from "next-intl/server";
@@ -27,6 +29,9 @@ export default async function DevisPage({
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId(supabase);
   if (!workspaceId) redirect("/onboarding");
+  const { currency, timezone } = await getWorkspaceLocalization(supabase, workspaceId);
+  const { formatDate } = await getServerFormatters(timezone);
+  const money = (centimes: number) => formatMoney(centimes, currency);
 
   let query = supabase
     .from("devis")
@@ -72,13 +77,13 @@ export default async function DevisPage({
           {totalEnvoye > 0 && (
             <div className="bg-white border border-[#E5E7EB] rounded-xl px-4 py-3">
               <p className="eyebrow">{t("pending")}</p>
-              <p className="font-fraunces text-[22px] text-[#0B1220] tabnum mt-0.5">{formatMAD(totalEnvoye)}</p>
+              <p className="font-fraunces text-[22px] text-[#0B1220] tabnum mt-0.5">{money(totalEnvoye)}</p>
             </div>
           )}
           {totalAccepte > 0 && (
             <div className="bg-white border border-[#E5E7EB] rounded-xl px-4 py-3">
               <p className="eyebrow">{t("accepted")}</p>
-              <p className="font-fraunces text-[22px] text-[#2F8F5C] tabnum mt-0.5">{formatMAD(totalAccepte)}</p>
+              <p className="font-fraunces text-[22px] text-[#2F8F5C] tabnum mt-0.5">{money(totalAccepte)}</p>
             </div>
           )}
         </div>
@@ -112,7 +117,7 @@ export default async function DevisPage({
                       </div>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-[13.5px] font-semibold text-[#0B1220] tabnum">{formatMAD(d.total_centimes)}</span>
+                      <span className="text-[13.5px] font-semibold text-[#0B1220] tabnum">{money(d.total_centimes)}</span>
                       <span className={`text-[10.5px] px-2 py-0.5 rounded-full font-semibold ${STATUS_COLORS[d.status] ?? STATUS_COLORS.brouillon}`}>
                         {(["brouillon","envoye","accepte","refuse","expire"] as const).includes(d.status as "brouillon"|"envoye"|"accepte"|"refuse"|"expire") ? ts(d.status as "brouillon"|"envoye"|"accepte"|"refuse"|"expire") : d.status}
                       </span>

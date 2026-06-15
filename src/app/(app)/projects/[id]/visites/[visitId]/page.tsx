@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft, HardHat, Sparkles, Camera } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { formatDate } from "@/lib/format";
+import { getServerFormatters } from "@/lib/formatters-server";
 import type { Observation } from "@/lib/actions/visites";
 import Image from "next/image";
 import { DeleteVisiteButton } from "@/components/visites/delete-visite-button";
@@ -31,6 +31,7 @@ export default async function VisiteDetailPage({
   const { id, visitId } = await params;
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId(supabase);
+  const { formatDate } = await getServerFormatters();
   if (!workspaceId) notFound();
 
   const [{ data: project }, { data: visite }, { data: firmProfile }, { data: siteIssues }] = await Promise.all([

@@ -8,7 +8,7 @@ import { ChevronLeft, Users, Pencil, Download } from "lucide-react";
 import { MoodboardBoard } from "@/components/moodboards/moodboard-board";
 import { MoodboardEditSheet } from "@/components/moodboards/moodboard-edit-sheet";
 import type { InspirationItem } from "@/components/projects/inspiration-board";
-import { formatDate } from "@/lib/format";
+import { getServerFormatters } from "@/lib/formatters-server";
 
 export default async function MoodboardDetailPage({
   params,
@@ -18,6 +18,7 @@ export default async function MoodboardDetailPage({
   const { id } = await params;
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId(supabase);
+  const { formatDate } = await getServerFormatters();
   if (!workspaceId) notFound();
 
   const [{ data: board }, { data: clients }] = await Promise.all([

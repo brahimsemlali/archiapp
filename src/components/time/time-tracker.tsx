@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Plus, Trash2, Clock, Edit2, Check, X } from "lucide-react";
 import { createTimeEntryAction, updateTimeEntryAction, deleteTimeEntryAction } from "@/lib/actions/time-entries";
-import { formatMAD } from "@/lib/format";
+import { useLocalization } from "@/components/localization-provider";
 import { cn } from "@/lib/utils";
 
 interface Project { id: string; title: string }
@@ -35,10 +36,6 @@ interface TimeTrackerProps {
 }
 
 const PHASES = ["esquisse", "aps", "apd", "pc", "dce", "chantier", "reception", "autre"] as const;
-const PHASE_LABELS: Record<string, string> = {
-  esquisse: "Esquisse", aps: "APS", apd: "APD", pc: "PC", dce: "DCE",
-  chantier: "Chantier", reception: "Réception", autre: "Autre",
-};
 
 type DateRange = "week" | "month" | "last_month" | "all";
 const RANGE_LABELS: Record<DateRange, string> = {
@@ -78,6 +75,8 @@ function getRangeDates(range: DateRange): { from: string; to: string } {
 const RATE_LS_KEY = "te_last_rate_mad";
 
 export function TimeTracker({ projects, tasks, entries: initialEntries }: TimeTrackerProps) {
+  const { money, formatDateParts } = useLocalization();
+  const tPhase = useTranslations("phase");
   const [entrySnapshot, setEntrySnapshot] = useState({
     source: initialEntries,
     entries: initialEntries,
@@ -258,7 +257,7 @@ export function TimeTracker({ projects, tasks, entries: initialEntries }: TimeTr
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-4">
           <p className="text-xs text-slate-500 mb-1">Valeur estimée</p>
-          <p className="text-xl font-bold text-blue-600">{valueCentimes > 0 ? formatMAD(valueCentimes) : "—"}</p>
+          <p className="text-xl font-bold text-blue-600">{valueCentimes > 0 ? money(valueCentimes) : "—"}</p>
         </div>
       </div>
 
@@ -269,7 +268,7 @@ export function TimeTracker({ projects, tasks, entries: initialEntries }: TimeTr
           <div className="space-y-2">
             {phaseBreakdown.map(([phase, mins]) => (
               <div key={phase} className="flex items-center gap-3">
-                <span className="text-xs text-slate-500 w-20 shrink-0">{PHASE_LABELS[phase] ?? phase}</span>
+                <span className="text-xs text-slate-500 w-20 shrink-0">{tPhase.has(phase) ? tPhase(phase) : phase}</span>
                 <div className="flex-1 bg-slate-100 rounded-full h-2">
                   <div className="bg-blue-500 rounded-full h-2 transition-all" style={{ width: `${Math.round((mins / totalMinutes) * 100)}%` }} />
                 </div>
@@ -321,7 +320,7 @@ export function TimeTracker({ projects, tasks, entries: initialEntries }: TimeTr
                   <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Aucune" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Aucune</SelectItem>
-                    {PHASES.map((ph) => <SelectItem key={ph} value={ph}>{PHASE_LABELS[ph] ?? ph}</SelectItem>)}
+                    {PHASES.map((ph) => <SelectItem key={ph} value={ph}>{tPhase.has(ph) ? tPhase(ph) : ph}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -373,7 +372,7 @@ export function TimeTracker({ projects, tasks, entries: initialEntries }: TimeTr
                 <div key={date}>
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs font-semibold text-slate-500">
-                      {new Date(date + "T00:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+                      {formatDateParts(date, { weekday: "long", day: "numeric", month: "long" })}
                     </p>
                     <span className="text-xs text-slate-400">{formatDuration(dayTotal)}</span>
                   </div>
@@ -402,7 +401,7 @@ export function TimeTracker({ projects, tasks, entries: initialEntries }: TimeTr
                               <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Phase" /></SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="none">Aucune phase</SelectItem>
-                                {PHASES.map((ph) => <SelectItem key={ph} value={ph}>{PHASE_LABELS[ph] ?? ph}</SelectItem>)}
+                                {PHASES.map((ph) => <SelectItem key={ph} value={ph}>{tPhase.has(ph) ? tPhase(ph) : ph}</SelectItem>)}
                               </SelectContent>
                             </Select>
                             <Input value={editForm.description} onChange={(e) => setEditForm((f) => f ? { ...f, description: e.target.value } : f)} placeholder="Description" className="h-7 text-xs" />
@@ -436,11 +435,11 @@ export function TimeTracker({ projects, tasks, entries: initialEntries }: TimeTr
                               <span className="text-sm font-medium text-slate-800 tabular-nums">{formatDuration(entry.duration_minutes)}</span>
                               {entry.projects?.title && <span className="text-xs text-slate-500 truncate">{entry.projects.title}</span>}
                               {entry.phase && (
-                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">{PHASE_LABELS[entry.phase] ?? entry.phase.toUpperCase()}</Badge>
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">{tPhase.has(entry.phase) ? tPhase(entry.phase) : entry.phase.toUpperCase()}</Badge>
                               )}
                               {entry.rate_centimes && entry.rate_centimes > 0 && (
                                 <span className="text-[10px] text-blue-500 font-medium">
-                                  {formatMAD(Math.round((entry.duration_minutes / 60) * entry.rate_centimes))}
+                                  {money(Math.round((entry.duration_minutes / 60) * entry.rate_centimes))}
                                 </span>
                               )}
                             </div>

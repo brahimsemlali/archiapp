@@ -8,7 +8,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Edit, MapPin, Ruler, Calendar, Plus, Receipt, BadgeDollarSign, TrendingUp, ListTodo } from "lucide-react";
 import { SharePortalButton } from "@/components/projects/share-portal-button";
-import { formatDate, formatMAD, formatRelative } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
+import { getWorkspaceLocalization } from "@/lib/localization";
+import { getServerFormatters } from "@/lib/formatters-server";
 import { PhaseChecklist } from "@/components/projects/phase-checklist";
 import { InspirationBoard } from "@/components/projects/inspiration-board";
 import type { InspirationItem } from "@/components/projects/inspiration-board";
@@ -20,7 +22,7 @@ import { SiteIssuesPanel, type SiteIssueRow } from "@/components/projects/site-i
 import { BoqManager, type BoqItemRow } from "@/components/boq/boq-manager";
 import { MeetingIntelligencePanel } from "@/components/projects/meeting-intelligence-panel";
 import { PhaseBudgetPlanner, type PhaseBudgetMap } from "@/components/projects/phase-budget-planner";
-import { PHASE_LABELS } from "@/lib/constants";
+import { getTranslations } from "next-intl/server";
 import { getPlanLimits } from "@/lib/billing/plans";
 import { signInspirationItems } from "@/lib/storage/signed-images";
 
@@ -76,6 +78,11 @@ export default async function ProjectDetailPage({
   const { data: { user } } = await supabase.auth.getUser();
   const workspaceId = await getWorkspaceId(supabase, user?.id);
   if (!workspaceId) notFound();
+  const { currency, timezone } = await getWorkspaceLocalization(supabase, workspaceId);
+  const { formatDate, formatRelative } = await getServerFormatters(timezone);
+  const tPhase = await getTranslations("phase");
+  const tStatus = await getTranslations("status.project");
+  const money = (centimes: number) => formatMoney(centimes, currency);
   const { data: workspace } = await supabase.from("workspaces").select("plan").eq("id", workspaceId).single();
   const aiEnabled = getPlanLimits(workspace?.plan).aiEnabled;
 
@@ -251,7 +258,7 @@ export default async function ProjectDetailPage({
               )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="outline">{PHASE_LABELS[project.phase] ?? project.phase}</Badge>
+              <Badge variant="outline">{tPhase.has(project.phase) ? tPhase(project.phase) : project.phase}</Badge>
               <SharePortalButton
                 projectId={id}
                 existingToken={portalLink?.token ?? null}
@@ -289,7 +296,7 @@ export default async function ProjectDetailPage({
         {project.fees_centimes && (
           <div className="flex items-center gap-2 text-sm">
             <span className="text-muted-foreground">Honoraires:</span>
-            <span className="font-medium">{formatMAD(project.fees_centimes)}</span>
+            <span className="font-medium">{money(project.fees_centimes)}</span>
           </div>
         )}
       </div>
@@ -339,16 +346,16 @@ export default async function ProjectDetailPage({
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Phase</span>
-                  <span>{PHASE_LABELS[project.phase] ?? project.phase}</span>
+                  <span>{tPhase.has(project.phase) ? tPhase(project.phase) : project.phase}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Statut</span>
-                  <span>{project.status}</span>
+                  <span>{tStatus.has(project.status) ? tStatus(project.status) : project.status}</span>
                 </div>
                 {project.budget_estimate_centimes && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Budget estimé</span>
-                    <span>{formatMAD(project.budget_estimate_centimes)}</span>
+                    <span>{money(project.budget_estimate_centimes)}</span>
                   </div>
                 )}
                 {project.target_end_date && (
@@ -397,20 +404,20 @@ export default async function ProjectDetailPage({
               <CardContent className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-0">
                 <div>
                   <p className="text-xs text-muted-foreground flex items-center gap-1"><Receipt className="h-3 w-3" /> Devis acceptés</p>
-                  <p className="text-lg font-bold mt-0.5">{totalDevisAccepted > 0 ? formatMAD(totalDevisAccepted) : "—"}</p>
+                  <p className="text-lg font-bold mt-0.5">{totalDevisAccepted > 0 ? money(totalDevisAccepted) : "—"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground flex items-center gap-1"><BadgeDollarSign className="h-3 w-3" /> Facturé</p>
-                  <p className="text-lg font-bold mt-0.5">{totalInvoiced > 0 ? formatMAD(totalInvoiced) : "—"}</p>
+                  <p className="text-lg font-bold mt-0.5">{totalInvoiced > 0 ? money(totalInvoiced) : "—"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Encaissé</p>
-                  <p className="text-lg font-bold text-green-700 mt-0.5">{totalPaid > 0 ? formatMAD(totalPaid) : "—"}</p>
+                  <p className="text-lg font-bold text-green-700 mt-0.5">{totalPaid > 0 ? money(totalPaid) : "—"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">En attente</p>
                   <p className={`text-lg font-bold mt-0.5 ${totalOutstanding > 0 ? "text-amber-700" : ""}`}>
-                    {totalOutstanding > 0 ? formatMAD(totalOutstanding) : "—"}
+                    {totalOutstanding > 0 ? money(totalOutstanding) : "—"}
                   </p>
                 </div>
               </CardContent>
@@ -559,7 +566,7 @@ export default async function ProjectDetailPage({
                         </div>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
-                        <span className="text-sm font-semibold">{formatMAD(d.total_centimes)}</span>
+                        <span className="text-sm font-semibold">{money(d.total_centimes)}</span>
                         <Badge variant={d.status === "accepte" ? "default" : d.status === "refuse" ? "destructive" : "secondary"}>
                           {DEVIS_STATUS[d.status] ?? d.status}
                         </Badge>
@@ -606,7 +613,7 @@ export default async function ProjectDetailPage({
                         </div>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
-                        <span className="text-sm font-semibold">{formatMAD(f.total_centimes)}</span>
+                        <span className="text-sm font-semibold">{money(f.total_centimes)}</span>
                         <Badge variant={f.status === "payee" ? "default" : f.status === "annulee" ? "destructive" : "secondary"}>
                           {FACTURE_STATUS[f.status] ?? f.status}
                         </Badge>
@@ -720,18 +727,18 @@ export default async function ProjectDetailPage({
                 {project.fees_centimes ? (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Honoraires contractés</span>
-                    <span className="font-semibold">{formatMAD(project.fees_centimes)}</span>
+                    <span className="font-semibold">{money(project.fees_centimes)}</span>
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground italic">Honoraires non renseignés</p>
                 )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Devis acceptés</span>
-                  <span className="font-medium">{totalDevisAccepted > 0 ? formatMAD(totalDevisAccepted) : "—"}</span>
+                  <span className="font-medium">{totalDevisAccepted > 0 ? money(totalDevisAccepted) : "—"}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Facturé</span>
-                  <span className="font-medium">{totalInvoiced > 0 ? formatMAD(totalInvoiced) : "—"}</span>
+                  <span className="font-medium">{totalInvoiced > 0 ? money(totalInvoiced) : "—"}</span>
                 </div>
                 {billingRatePct !== null && (
                   <div className="flex justify-between">
@@ -741,7 +748,7 @@ export default async function ProjectDetailPage({
                 )}
                 <div className="border-t pt-3 flex justify-between">
                   <span className="text-muted-foreground">Encaissé</span>
-                  <span className="font-bold text-green-700">{totalPaid > 0 ? formatMAD(totalPaid) : "—"}</span>
+                  <span className="font-bold text-green-700">{totalPaid > 0 ? money(totalPaid) : "—"}</span>
                 </div>
                 {collectionRatePct !== null && (
                   <div className="flex justify-between">
@@ -752,7 +759,7 @@ export default async function ProjectDetailPage({
                 {totalOutstanding > 0 && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">En attente</span>
-                    <span className="font-medium text-amber-700">{formatMAD(totalOutstanding)}</span>
+                    <span className="font-medium text-amber-700">{money(totalOutstanding)}</span>
                   </div>
                 )}
               </CardContent>
@@ -777,7 +784,7 @@ export default async function ProjectDetailPage({
                     {hasRates && (
                       <div className="flex justify-between border-t pt-3">
                         <span className="text-muted-foreground">Coût estimé (temps)</span>
-                        <span className="font-semibold text-red-700">{formatMAD(timeCostCentimes)}</span>
+                        <span className="font-semibold text-red-700">{money(timeCostCentimes)}</span>
                       </div>
                     )}
                     {!hasRates && (
@@ -796,16 +803,16 @@ export default async function ProjectDetailPage({
                   <>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Encaissé</span>
-                      <span className="font-medium">{formatMAD(totalPaid)}</span>
+                      <span className="font-medium">{money(totalPaid)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Coût temps</span>
-                      <span className="font-medium text-red-700">- {formatMAD(timeCostCentimes)}</span>
+                      <span className="font-medium text-red-700">- {money(timeCostCentimes)}</span>
                     </div>
                     <div className="border-t pt-3 flex justify-between">
                       <span className="font-semibold">Marge brute</span>
                       <span className={`font-bold text-base ${grossMarginCentimes >= 0 ? "text-green-700" : "text-red-700"}`}>
-                        {formatMAD(grossMarginCentimes)}
+                        {money(grossMarginCentimes)}
                       </span>
                     </div>
                     {marginPct !== null && (
@@ -829,15 +836,15 @@ export default async function ProjectDetailPage({
                     <p className="text-xs font-medium">Budget vs réel</p>
                     <div className="flex justify-between mt-1">
                       <span className="text-muted-foreground">Budget estimé</span>
-                      <span className="font-medium">{formatMAD(project.budget_estimate_centimes)}</span>
+                      <span className="font-medium">{money(project.budget_estimate_centimes)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Coût réel</span>
-                      <span className={`font-medium ${timeCostCentimes > project.budget_estimate_centimes ? "text-red-700" : "text-green-700"}`}>{formatMAD(timeCostCentimes)}</span>
+                      <span className={`font-medium ${timeCostCentimes > project.budget_estimate_centimes ? "text-red-700" : "text-green-700"}`}>{money(timeCostCentimes)}</span>
                     </div>
                     {timeCostCentimes > project.budget_estimate_centimes && (
                       <p className="text-xs text-red-600 font-semibold mt-1">
-                        Dépassement : +{formatMAD(timeCostCentimes - project.budget_estimate_centimes)}
+                        Dépassement : +{money(timeCostCentimes - project.budget_estimate_centimes)}
                       </p>
                     )}
                   </div>
@@ -880,7 +887,7 @@ export default async function ProjectDetailPage({
                             {Math.floor(minutes / 60)}h{minutes % 60 > 0 ? `${minutes % 60}` : ""}
                           </span>
                           {hasRates && (
-                            <span className="w-28 text-right text-muted-foreground tabular-nums">{formatMAD(cost)}</span>
+                            <span className="w-28 text-right text-muted-foreground tabular-nums">{money(cost)}</span>
                           )}
                         </div>
                       ))}

@@ -23,7 +23,8 @@ import {
 import { toast } from "sonner";
 import { uploadFileAction, getFileDownloadUrl, deleteFileAction, updateFileApprovalStatusAction } from "@/lib/actions/files";
 import { useUpgradeModal } from "@/components/billing/use-upgrade-modal";
-import { formatFileSize, formatDate } from "@/lib/format";
+import { formatFileSize } from "@/lib/format";
+import { useLocalization } from "@/components/localization-provider";
 import { FilePreview } from "./file-preview";
 import { ShareLinkDialog } from "./share-link-dialog";
 import { FileHistoryDialog } from "./file-history-dialog";
@@ -63,6 +64,7 @@ function isPreviewable(mimeType: string) {
 
 export function FileManager({ projectId, filesByFolder, allFiles, defaultFolders }: FileManagerProps) {
   const t = useTranslations("common");
+  const { formatDate } = useLocalization();
   const { trigger: triggerUpgrade, modal: upgradeModal } = useUpgradeModal();
   const [uploading, setUploading] = useState(false);
   const [activeFolder, setActiveFolder] = useState(defaultFolders[0] ?? "Plans");

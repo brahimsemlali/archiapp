@@ -4,7 +4,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Download, History } from "lucide-react";
-import { formatDate, formatFileSize } from "@/lib/format";
+import { formatFileSize } from "@/lib/format";
+import { useLocalization } from "@/components/localization-provider";
 import { getFileDownloadUrl } from "@/lib/actions/files";
 import { toast } from "sonner";
 
@@ -25,6 +26,7 @@ interface FileHistoryDialogProps {
 }
 
 export function FileHistoryDialog({ file, allFiles, onClose }: FileHistoryDialogProps) {
+  const { formatDate } = useLocalization();
   const versions = allFiles
     .filter((f) => f.filename === file.filename && f.folder === file.folder)
     .sort((a, b) => b.version - a.version);

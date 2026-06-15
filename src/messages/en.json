@@ -455,6 +455,11 @@
     "cnss": "CNSS",
     "patente": "Business licence",
     "iban": "IBAN",
+    "localizationSection": "Localization",
+    "country": "Country",
+    "currency": "Currency",
+    "defaultTaxRate": "Default tax rate (%)",
+    "localizationHint": "The country sets the default currency, tax and timezone. Existing documents are not changed.",
     "save": "Save",
     "saved": "Settings saved."
   },
@@ -621,7 +626,8 @@
       "actif": "Active",
       "en_attente": "On Hold",
       "suspendu": "Suspended",
-      "archive": "Archived"
+      "archive": "Archived",
+      "termine": "Completed"
     },
     "task": {
       "todo": "To do",
@@ -637,7 +643,8 @@
     "dce": "Tender Docs",
     "chantier": "Construction",
     "reception": "Handover",
-    "termine": "Completed"
+    "termine": "Completed",
+    "autre": "Other"
   },
   "priority": {
     "haute": "High",
@@ -702,5 +709,53 @@
     "superadmin_user_unbanned": "User restored by superadmin",
     "billing_lemonsqueezy_webhook": "Subscription synced",
     "activation_demo_workspace_created": "Demo data installed"
+  },
+  "phaseDeliverables": {
+    "esquisse": [
+      "Architectural sketch",
+      "Presentation note",
+      "Rough estimate"
+    ],
+    "aps": [
+      "Site plans",
+      "APS floor plans",
+      "APS sections & elevations",
+      "Descriptive notice",
+      "Preliminary estimate"
+    ],
+    "apd": [
+      "Detailed APD drawings",
+      "Technical specifications (CCTP)",
+      "Detailed estimate",
+      "Building permit file prepared"
+    ],
+    "pc": [
+      "Building permit application submitted",
+      "Permit acknowledgment of receipt",
+      "Building permit obtained"
+    ],
+    "dce": [
+      "Execution drawings",
+      "Trade-by-trade specifications",
+      "Unit price schedule",
+      "Tender documents"
+    ],
+    "chantier": [
+      "Site start report",
+      "Regular site visits",
+      "Partial acceptance report",
+      "Variation orders management"
+    ],
+    "reception": [
+      "Final acceptance report",
+      "Snag list clearance",
+      "As-built file (DOE)",
+      "Certificate of conformity"
+    ],
+    "termine": [
+      "Complete file archiving",
+      "Final fee invoice",
+      "Client feedback review"
+    ]
   }
 }

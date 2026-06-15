@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ContractEditor } from "@/components/contracts/contract-editor";
-import { formatDate } from "@/lib/format";
+import { getServerFormatters } from "@/lib/formatters-server";
 import { getWorkspaceId } from "@/lib/workspace";
 import { getTranslations } from "next-intl/server";
 
@@ -24,6 +24,7 @@ export default async function ContractDetailPage({
   const ts = await getTranslations("status.contract");
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId(supabase);
+  const { formatDate } = await getServerFormatters();
   if (!workspaceId) notFound();
 
   const [{ data: contract }, { data: signature }] = await Promise.all([

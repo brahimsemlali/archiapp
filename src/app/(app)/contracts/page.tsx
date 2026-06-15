@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { FileText } from "lucide-react";
-import { formatDate } from "@/lib/format";
+import { getServerFormatters } from "@/lib/formatters-server";
 import { ContractsFilters } from "@/components/contracts/contracts-filters";
 import { getWorkspaceId } from "@/lib/workspace";
 import { getTranslations } from "next-intl/server";
@@ -25,6 +25,7 @@ export default async function ContractsPage({
   const tt = await getTranslations("contractType");
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId(supabase);
+  const { formatDate } = await getServerFormatters();
   if (!workspaceId) redirect("/onboarding");
 
   let query = supabase

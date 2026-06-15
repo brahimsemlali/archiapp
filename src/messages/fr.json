@@ -455,6 +455,11 @@
     "cnss": "CNSS",
     "patente": "Patente",
     "iban": "IBAN",
+    "localizationSection": "Localisation",
+    "country": "Pays",
+    "currency": "Devise",
+    "defaultTaxRate": "Taux de taxe par défaut (%)",
+    "localizationHint": "Le pays définit la devise, la taxe et le fuseau horaire par défaut. Les documents existants ne sont pas modifiés.",
     "save": "Enregistrer",
     "saved": "Paramètres enregistrés."
   },
@@ -621,7 +626,8 @@
       "actif": "Actif",
       "en_attente": "En attente",
       "suspendu": "Suspendu",
-      "archive": "Archivé"
+      "archive": "Archivé",
+      "termine": "Terminé"
     },
     "task": {
       "todo": "À faire",
@@ -637,7 +643,8 @@
     "dce": "DCE",
     "chantier": "Chantier",
     "reception": "Réception",
-    "termine": "Terminé"
+    "termine": "Terminé",
+    "autre": "Autre"
   },
   "priority": {
     "haute": "Haute",
@@ -702,5 +709,53 @@
     "superadmin_user_unbanned": "Utilisateur réactivé par superadmin",
     "billing_lemonsqueezy_webhook": "Abonnement synchronisé",
     "activation_demo_workspace_created": "Données exemple installées"
+  },
+  "phaseDeliverables": {
+    "esquisse": [
+      "Esquisse architecturale",
+      "Note de présentation",
+      "Estimation sommaire"
+    ],
+    "aps": [
+      "Plans masse",
+      "Plans de niveaux APS",
+      "Coupes et façades APS",
+      "Notice descriptive",
+      "Estimation provisoire"
+    ],
+    "apd": [
+      "Plans détaillés APD",
+      "CCTP (Cahier des Clauses Techniques Particulières)",
+      "Estimation détaillée",
+      "Dossier PC préparé"
+    ],
+    "pc": [
+      "Dossier permis de construire déposé",
+      "Accusé de réception PC",
+      "Permis de construire obtenu"
+    ],
+    "dce": [
+      "Plans d'exécution",
+      "CCTP lot par lot",
+      "Bordereau des prix unitaires",
+      "Dossier consultation des entreprises"
+    ],
+    "chantier": [
+      "PV de démarrage de chantier",
+      "Visites de chantier régulières",
+      "PV de réception partielle",
+      "Gestion des avenants"
+    ],
+    "reception": [
+      "PV de réception définitive",
+      "Levée des réserves",
+      "DOE (Dossier des ouvrages exécutés)",
+      "Attestation de conformité"
+    ],
+    "termine": [
+      "Archivage complet du dossier",
+      "Facture solde honoraires",
+      "Retour d'expérience client"
+    ]
   }
 }

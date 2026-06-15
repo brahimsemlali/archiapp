@@ -1,13 +1,6 @@
-export const PHASE_LABELS: Record<string, string> = {
-  esquisse: "Esquisse",
-  aps: "APS",
-  apd: "APD",
-  pc: "PC",
-  dce: "DCE",
-  chantier: "Chantier",
-  reception: "Réception",
-  termine: "Terminé",
-};
+// Phase, status and deliverable LABELS are i18n (messages: `phase`, `status.project`,
+// `phaseDeliverables`) — see worldwide.md W3. DB keys (esquisse…termine) stay stable here
+// as PHASE_ORDER; only labels localize. PHASE_COLORS is presentation, not translatable.
 
 export const PHASE_COLORS: Record<string, string> = {
   esquisse: "bg-slate-100 text-slate-700",
@@ -31,59 +24,3 @@ export const PHASE_ORDER = [
   "termine",
 ] as const;
 
-export const STATUS_LABELS: Record<string, string> = {
-  actif: "Actif",
-  en_attente: "En attente",
-  suspendu: "Suspendu",
-  termine: "Terminé",
-  archive: "Archivé",
-};
-
-export const PHASE_DELIVERABLES: Record<string, string[]> = {
-  esquisse: [
-    "Esquisse architecturale",
-    "Note de présentation",
-    "Estimation sommaire",
-  ],
-  aps: [
-    "Plans masse",
-    "Plans de niveaux APS",
-    "Coupes et façades APS",
-    "Notice descriptive",
-    "Estimation provisoire",
-  ],
-  apd: [
-    "Plans détaillés APD",
-    "CCTP (Cahier des Clauses Techniques Particulières)",
-    "Estimation détaillée",
-    "Dossier PC préparé",
-  ],
-  pc: [
-    "Dossier permis de construire déposé",
-    "Accusé de réception PC",
-    "Permis de construire obtenu",
-  ],
-  dce: [
-    "Plans d'exécution",
-    "CCTP lot par lot",
-    "Bordereau des prix unitaires",
-    "Dossier consultation des entreprises",
-  ],
-  chantier: [
-    "PV de démarrage de chantier",
-    "Visites de chantier régulières",
-    "PV de réception partielle",
-    "Gestion des avenants",
-  ],
-  reception: [
-    "PV de réception définitive",
-    "Levée des réserves",
-    "DOE (Dossier des ouvrages exécutés)",
-    "Attestation de conformité",
-  ],
-  termine: [
-    "Archivage complet du dossier",
-    "Facture solde honoraires",
-    "Retour d'expérience client",
-  ],
-};

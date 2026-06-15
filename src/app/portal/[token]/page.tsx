@@ -1,7 +1,10 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { requireWorkspaceAccountActive } from "@/lib/workspace";
-import { formatDate, formatMAD, formatFileSize } from "@/lib/format";
+import { formatMoney, formatFileSize } from "@/lib/format";
+import { resolveLocalization } from "@/lib/country-packs";
+import { getTranslations } from "next-intl/server";
+import { getServerFormatters } from "@/lib/formatters-server";
 import { Download, FileText, FileImage, File, Building2, Ruler, Calendar, CheckCircle2, Circle, Clock, MessageCircle, Receipt, Upload } from "lucide-react";
 import Image from "next/image";
 import { SignaturePadPortal } from "@/components/contracts/signature-pad-portal";
@@ -153,10 +156,15 @@ export default async function ClientPortalPage({
       .order("created_at", { ascending: true }),
     supabase
       .from("firm_profile")
-      .select("firm_name, architect_name, logo_url, address, phone, email")
+      .select("*")
       .eq("workspace_id", shareLink.workspace_id)
       .single(),
   ]);
+
+  const { currency, timezone } = resolveLocalization(firmProfile);
+  const { formatDate } = await getServerFormatters(timezone);
+  const tPhase = await getTranslations("phase");
+  const money = (centimes: number) => formatMoney(centimes, currency);
 
   const contractIds = (contracts ?? []).map((c) => c.id);
   const { data: signatures } = contractIds.length > 0
@@ -271,7 +279,7 @@ export default async function ClientPortalPage({
                         : "text-gray-400"
                     }`}
                   >
-                    {phase.label}
+                    {tPhase.has(phase.key) ? tPhase(phase.key) : phase.label}
                     {current && (
                       <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-normal">
                         En cours
@@ -310,7 +318,7 @@ export default async function ClientPortalPage({
           {project.fees_centimes && (
             <div className="bg-white rounded-xl border p-4 shadow-sm">
               <p className="text-xs text-gray-400 mb-2">Honoraires</p>
-              <p className="text-sm font-semibold">{formatMAD(project.fees_centimes)}</p>
+              <p className="text-sm font-semibold">{money(project.fees_centimes)}</p>
             </div>
           )}
         </div>
@@ -384,7 +392,7 @@ export default async function ClientPortalPage({
                       <div>
                         <p className="text-sm font-medium">{devis.title}</p>
                         <p className="text-xs text-gray-400">
-                          {devis.number} · {formatMAD(devis.total_centimes)}
+                          {devis.number} · {money(devis.total_centimes)}
                           {devis.valid_until && ` · valable jusqu'au ${formatDate(devis.valid_until)}`}
                         </p>
                       </div>
@@ -427,7 +435,7 @@ export default async function ClientPortalPage({
                       <div>
                         <p className="text-sm font-medium">{facture.title}</p>
                         <p className="text-xs text-gray-400">
-                          {facture.number} · {formatMAD(facture.total_centimes)}
+                          {facture.number} · {money(facture.total_centimes)}
                           {facture.due_date && ` · échéance ${formatDate(facture.due_date)}`}
                         </p>
                         {facture.paid_at && (

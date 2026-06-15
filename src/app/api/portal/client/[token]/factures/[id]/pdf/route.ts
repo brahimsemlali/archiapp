@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { FacturePdf } from "@/lib/pdf/facture-template";
 import { withNormalizedLogo } from "@/lib/pdf/logo";
+import { resolveLocalization } from "@/lib/country-packs";
 import React from "react";
 import type { DocumentProps } from "@react-pdf/renderer";
 import type { DevisItem } from "@/lib/validators/devis";
@@ -42,7 +43,7 @@ export async function GET(
 
   const { data: firm } = await supabase
     .from("firm_profile")
-    .select("firm_name, architect_name, address, phone, email, ice, iban, logo_url")
+    .select("*")
     .eq("workspace_id", shareLink.workspace_id)
     .single();
 
@@ -67,6 +68,8 @@ export async function GET(
     client,
     project: project ? { title: project.title } : null,
     firm: await withNormalizedLogo(firm),
+    currency: resolveLocalization(firm).currency,
+    taxLabel: resolveLocalization(firm).taxLabel,
   }) as React.ReactElement<DocumentProps>;
 
   const pdfBuffer = await renderToBuffer(element);

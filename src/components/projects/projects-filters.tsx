@@ -1,6 +1,8 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { useTranslations } from "next-intl";
+import { PHASE_ORDER } from "@/lib/constants";
 import { useCallback, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,6 +18,7 @@ interface ProjectsFiltersProps {
 }
 
 export function ProjectsFilters({ clients }: ProjectsFiltersProps) {
+  const tPhase = useTranslations("phase");
   const router = useRouter();
   const searchParams = useSearchParams();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -63,14 +66,9 @@ export function ProjectsFilters({ clients }: ProjectsFiltersProps) {
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">Toutes les phases</SelectItem>
-          <SelectItem value="esquisse">Esquisse</SelectItem>
-          <SelectItem value="aps">APS</SelectItem>
-          <SelectItem value="apd">APD</SelectItem>
-          <SelectItem value="pc">PC</SelectItem>
-          <SelectItem value="dce">DCE</SelectItem>
-          <SelectItem value="chantier">Chantier</SelectItem>
-          <SelectItem value="reception">Réception</SelectItem>
-          <SelectItem value="termine">Terminé</SelectItem>
+          {PHASE_ORDER.map((p) => (
+            <SelectItem key={p} value={p}>{tPhase.has(p) ? tPhase(p) : p}</SelectItem>
+          ))}
         </SelectContent>
       </Select>
 

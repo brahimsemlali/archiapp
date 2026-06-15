@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { usePathname, useRouter } from "next/navigation";
 import { Clock, Loader2, Play, Square, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -30,16 +31,6 @@ interface RunningTimer {
 }
 
 const PHASES = ["esquisse", "aps", "apd", "pc", "dce", "chantier", "reception", "autre"] as const;
-const PHASE_LABELS: Record<string, string> = {
-  esquisse: "Esquisse",
-  aps: "APS",
-  apd: "APD",
-  pc: "PC",
-  dce: "DCE",
-  chantier: "Chantier",
-  reception: "Réception",
-  autre: "Autre",
-};
 
 function storageKey(workspaceId: string) {
   return `archidesk_running_timer_${workspaceId}`;
@@ -89,6 +80,7 @@ function routeLabel(pathname: string): string {
 }
 
 export function PersistentTimeTimer({ workspaceId, projects, tasks }: PersistentTimeTimerProps) {
+  const tPhase = useTranslations("phase");
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -248,7 +240,7 @@ export function PersistentTimeTimer({ workspaceId, projects, tasks }: Persistent
                 <p className="text-xs font-semibold uppercase tracking-[0.08em] text-[#ADAB9D]">Chronomètre actif</p>
                 <p className="mt-1 font-mono text-3xl font-bold tabular-nums text-[#0B1220]">{formatTimer(elapsed)}</p>
                 <p className="mt-1 text-xs text-[#64748B]">
-                  {runningProject?.title ?? "Aucun projet"}{runningTimer.phase ? ` · ${PHASE_LABELS[runningTimer.phase] ?? runningTimer.phase}` : ""}
+                  {runningProject?.title ?? "Aucun projet"}{runningTimer.phase ? ` · ${tPhase.has(runningTimer.phase) ? tPhase(runningTimer.phase) : runningTimer.phase}` : ""}
                 </p>
                 {runningTimer.description && (
                   <p className="mt-2 truncate rounded-lg bg-[#F7F8FA] px-3 py-2 text-xs text-[#475569]">{runningTimer.description}</p>
@@ -318,7 +310,7 @@ export function PersistentTimeTimer({ workspaceId, projects, tasks }: Persistent
                   <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Aucune phase" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Aucune phase</SelectItem>
-                    {PHASES.map((phase) => <SelectItem key={phase} value={phase}>{PHASE_LABELS[phase] ?? phase}</SelectItem>)}
+                    {PHASES.map((phase) => <SelectItem key={phase} value={phase}>{tPhase.has(phase) ? tPhase(phase) : phase}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

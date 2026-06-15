@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { createBoqItemAction, deleteBoqItemAction, updateBoqItemAction } from "@/lib/actions/boq-items";
-import { formatMAD } from "@/lib/format";
+import { useLocalization } from "@/components/localization-provider";
 import { cn } from "@/lib/utils";
 
 export interface BoqItemRow {
@@ -66,6 +66,7 @@ export function BoqManager({
   suppliers: SupplierOption[];
   defaultProjectId?: string;
 }) {
+  const { money } = useLocalization();
   const t = useTranslations("common");
   const [rowSnapshot, setRowSnapshot] = useState({ source: items, rows: items });
   const [saving, setSaving] = useState(false);
@@ -172,9 +173,9 @@ export function BoqManager({
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-4">
-        <Summary label="Budget estimé" value={formatMAD(totals.estimated)} />
-        <Summary label="Coût réel" value={totals.actual > 0 ? formatMAD(totals.actual) : "—"} />
-        <Summary label="Écart" value={totals.estimated > 0 ? formatMAD(totals.remaining) : "—"} danger={totals.remaining < 0} />
+        <Summary label="Budget estimé" value={money(totals.estimated)} />
+        <Summary label="Coût réel" value={totals.actual > 0 ? money(totals.actual) : "—"} />
+        <Summary label="Écart" value={totals.estimated > 0 ? money(totals.remaining) : "—"} danger={totals.remaining < 0} />
         <Summary label="Commandés/livrés" value={`${totals.ordered}/${rows.length}`} />
       </div>
 
@@ -266,9 +267,9 @@ export function BoqManager({
                   {row.notes && <p className="mt-1 text-xs text-[#475569]">{row.notes}</p>}
                 </div>
                 <p className="text-sm text-[#475569] tabular-nums">{Number(row.quantity).toLocaleString("fr-FR")} {row.unit}</p>
-                <p className="text-sm font-medium tabular-nums">{row.estimated_cost_centimes ? formatMAD(row.estimated_cost_centimes) : "—"}</p>
+                <p className="text-sm font-medium tabular-nums">{row.estimated_cost_centimes ? money(row.estimated_cost_centimes) : "—"}</p>
                 <p className={cn("text-sm font-medium tabular-nums", row.actual_cost_centimes > row.estimated_cost_centimes && row.estimated_cost_centimes > 0 ? "text-[#C75B2E]" : "")}>
-                  {row.actual_cost_centimes ? formatMAD(row.actual_cost_centimes) : "—"}
+                  {row.actual_cost_centimes ? money(row.actual_cost_centimes) : "—"}
                 </p>
                 <Select value={row.procurement_status} onValueChange={(v) => handleStatus(row, v as BoqItemRow["procurement_status"])}>
                   <SelectTrigger className={cn("h-8 w-full", STATUS_CLASSES[row.procurement_status])}>

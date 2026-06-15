@@ -3,7 +3,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Receipt, CheckCircle2, Clock, AlertCircle } from "lucide-react";
-import { formatDate, formatMAD } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
+import { getWorkspaceLocalization } from "@/lib/localization";
+import { getServerFormatters } from "@/lib/formatters-server";
 import { FacturesFilters } from "@/components/factures/factures-filters";
 import { RecurringInvoicesPanel } from "@/components/factures/recurring-invoices-panel";
 import { getWorkspaceId } from "@/lib/workspace";
@@ -34,6 +36,9 @@ export default async function FacturesPage({
   const supabase = await createClient();
   const workspaceId = await getWorkspaceId(supabase);
   if (!workspaceId) redirect("/onboarding");
+  const { currency, timezone } = await getWorkspaceLocalization(supabase, workspaceId);
+  const { formatDate } = await getServerFormatters(timezone);
+  const money = (centimes: number) => formatMoney(centimes, currency);
 
   let query = supabase
     .from("factures")
@@ -72,7 +77,7 @@ export default async function FacturesPage({
           <h1 className="page-title text-[28px] text-[#0B1220]">{t("title")}</h1>
           <p className="text-[13.5px] text-[#64748B] mt-1">
             {totalUnpaid > 0
-              ? <span className="text-[#C75B2E] font-medium">{formatMAD(totalUnpaid)} {t("toCollect")}</span>
+              ? <span className="text-[#C75B2E] font-medium">{money(totalUnpaid)} {t("toCollect")}</span>
               : t("title")}
           </p>
         </div>
@@ -88,7 +93,7 @@ export default async function FacturesPage({
         {totalUnpaid > 0 && (
           <div className={`bg-white border rounded-xl px-4 py-3 ${overdueCount > 0 ? "border-[#C75B2E]/30" : "border-[#E5E7EB]"}`}>
             <p className="eyebrow">{t("toCollect")}</p>
-            <p className={`font-fraunces text-[22px] tabnum mt-0.5 ${overdueCount > 0 ? "text-[#C75B2E]" : "text-[#0B1220]"}`}>{formatMAD(totalUnpaid)}</p>
+            <p className={`font-fraunces text-[22px] tabnum mt-0.5 ${overdueCount > 0 ? "text-[#C75B2E]" : "text-[#0B1220]"}`}>{money(totalUnpaid)}</p>
             {overdueCount > 0 && (
               <p className="text-[11px] text-[#C75B2E] font-semibold mt-0.5">{overdueCount} {t("overdue")}</p>
             )}
@@ -97,7 +102,7 @@ export default async function FacturesPage({
         {totalPaid > 0 && (
           <div className="bg-white border border-[#E5E7EB] rounded-xl px-4 py-3">
             <p className="eyebrow">{t("collected")}</p>
-            <p className="font-fraunces text-[22px] text-[#2F8F5C] tabnum mt-0.5">{formatMAD(totalPaid)}</p>
+            <p className="font-fraunces text-[22px] text-[#2F8F5C] tabnum mt-0.5">{money(totalPaid)}</p>
           </div>
         )}
       </div>
@@ -132,7 +137,7 @@ export default async function FacturesPage({
                       </div>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-[13.5px] font-semibold text-[#0B1220] tabnum">{formatMAD(f.total_centimes)}</span>
+                      <span className="text-[13.5px] font-semibold text-[#0B1220] tabnum">{money(f.total_centimes)}</span>
                       <span className={`text-[10.5px] px-2 py-0.5 rounded-full font-semibold ${statusColors}`}>
                         {(["brouillon","envoyee","payee","annulee"] as const).includes(f.status as "brouillon"|"envoyee"|"payee"|"annulee") ? ts(f.status as "brouillon"|"envoyee"|"payee"|"annulee") : f.status}
                       </span>

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { formatMAD } from "@/lib/format";
-import { PHASE_LABELS } from "@/lib/constants";
+import { useLocalization } from "@/components/localization-provider";
+import { useTranslations } from "next-intl";
 import { TrendingUp, TrendingDown, Minus, ExternalLink } from "lucide-react";
 
 interface ProjectRow {
@@ -22,6 +22,8 @@ interface ProjectProfitabilityProps {
 }
 
 export function ProjectProfitability({ rows }: ProjectProfitabilityProps) {
+  const tPhase = useTranslations("phase");
+  const { money } = useLocalization();
   const sorted = [...rows].sort((a, b) => {
     const ma = a.hasRates && a.totalPaid > 0 ? (a.totalPaid - a.timeCost) / a.totalPaid : null;
     const mb = b.hasRates && b.totalPaid > 0 ? (b.totalPaid - b.timeCost) / b.totalPaid : null;
@@ -75,18 +77,18 @@ export function ProjectProfitability({ rows }: ProjectProfitabilityProps) {
                     {row.title}
                     <ExternalLink className="h-3 w-3 text-muted-foreground" />
                   </Link>
-                  <p className="text-xs text-[#64748B]">{PHASE_LABELS[row.phase] ?? row.phase}</p>
+                  <p className="text-xs text-[#64748B]">{tPhase.has(row.phase) ? tPhase(row.phase) : row.phase}</p>
                 </div>
                 {margin !== null && <MarginBadge margin={margin} />}
               </div>
               <div className="grid grid-cols-3 gap-2 text-xs">
                 <div>
                   <p className="text-[#64748B]">Facturé</p>
-                  <p className="font-medium">{row.totalInvoiced > 0 ? formatMAD(row.totalInvoiced) : "—"}</p>
+                  <p className="font-medium">{row.totalInvoiced > 0 ? money(row.totalInvoiced) : "—"}</p>
                 </div>
                 <div>
                   <p className="text-[#64748B]">Encaissé</p>
-                  <p className="font-medium text-green-700">{row.totalPaid > 0 ? formatMAD(row.totalPaid) : "—"}</p>
+                  <p className="font-medium text-green-700">{row.totalPaid > 0 ? money(row.totalPaid) : "—"}</p>
                 </div>
                 <div>
                   <p className="text-[#64748B]">Temps</p>
@@ -102,11 +104,11 @@ export function ProjectProfitability({ rows }: ProjectProfitabilityProps) {
                   {row.title}
                   <ExternalLink className="h-3 w-3 text-muted-foreground" />
                 </Link>
-                <p className="text-xs text-[#64748B]">{PHASE_LABELS[row.phase] ?? row.phase}</p>
+                <p className="text-xs text-[#64748B]">{tPhase.has(row.phase) ? tPhase(row.phase) : row.phase}</p>
               </div>
               <div className="text-right">
                 {row.fees_centimes ? (
-                  <span className="font-medium text-xs">{formatMAD(row.fees_centimes)}</span>
+                  <span className="font-medium text-xs">{money(row.fees_centimes)}</span>
                 ) : (
                   <span className="text-[#64748B]">—</span>
                 )}
@@ -114,16 +116,16 @@ export function ProjectProfitability({ rows }: ProjectProfitabilityProps) {
                   <p className={`text-[10px] ${billingPct >= 90 ? "text-green-700" : billingPct >= 60 ? "text-amber-700" : "text-red-600"}`}>{billingPct}% fact.</p>
                 )}
               </div>
-              <span className="text-right text-[#64748B]">{row.totalInvoiced > 0 ? formatMAD(row.totalInvoiced) : "—"}</span>
-              <span className="text-right font-medium text-green-700">{row.totalPaid > 0 ? formatMAD(row.totalPaid) : "—"}</span>
+              <span className="text-right text-[#64748B]">{row.totalInvoiced > 0 ? money(row.totalInvoiced) : "—"}</span>
+              <span className="text-right font-medium text-green-700">{row.totalPaid > 0 ? money(row.totalPaid) : "—"}</span>
               <span className="text-right text-[#64748B]">{row.totalMinutes > 0 ? `${hours}h${mins > 0 ? mins : ""}` : "—"}</span>
-              <span className="text-right text-red-700">{row.hasRates && row.timeCost > 0 ? formatMAD(row.timeCost) : "—"}</span>
+              <span className="text-right text-red-700">{row.hasRates && row.timeCost > 0 ? money(row.timeCost) : "—"}</span>
               <div className="text-right">
                 {margin !== null ? (
                   <MarginBadge margin={margin} />
                 ) : grossMargin !== null ? (
                   <span className={`text-xs font-semibold ${grossMargin >= 0 ? "text-green-700" : "text-red-700"}`}>
-                    {formatMAD(grossMargin)}
+                    {money(grossMargin)}
                   </span>
                 ) : (
                   <span className="text-[#64748B]">—</span>
@@ -139,16 +141,16 @@ export function ProjectProfitability({ rows }: ProjectProfitabilityProps) {
         <div className="bg-[#F1F5F9] border border-[#E5E7EB] rounded-xl p-3 mt-2">
           <div className="hidden sm:grid grid-cols-[1fr_100px_100px_100px_80px_80px_60px] gap-2 items-center text-sm font-semibold">
             <span className="text-[#0B1220]">Total ({rows.length} projets)</span>
-            <span className="text-right">{formatMAD(rows.reduce((s, r) => s + (r.fees_centimes ?? 0), 0))}</span>
-            <span className="text-right">{formatMAD(rows.reduce((s, r) => s + r.totalInvoiced, 0))}</span>
-            <span className="text-right text-green-700">{formatMAD(rows.reduce((s, r) => s + r.totalPaid, 0))}</span>
+            <span className="text-right">{money(rows.reduce((s, r) => s + (r.fees_centimes ?? 0), 0))}</span>
+            <span className="text-right">{money(rows.reduce((s, r) => s + r.totalInvoiced, 0))}</span>
+            <span className="text-right text-green-700">{money(rows.reduce((s, r) => s + r.totalPaid, 0))}</span>
             <span className="text-right text-[#64748B]">{Math.floor(rows.reduce((s, r) => s + r.totalMinutes, 0) / 60)}h</span>
-            <span className="text-right text-red-700">{formatMAD(rows.reduce((s, r) => s + r.timeCost, 0))}</span>
+            <span className="text-right text-red-700">{money(rows.reduce((s, r) => s + r.timeCost, 0))}</span>
             <span />
           </div>
           <div className="sm:hidden flex justify-between text-sm font-semibold">
             <span>Total</span>
-            <span className="text-green-700">{formatMAD(rows.reduce((s, r) => s + r.totalPaid, 0))} encaissé</span>
+            <span className="text-green-700">{money(rows.reduce((s, r) => s + r.totalPaid, 0))} encaissé</span>
           </div>
         </div>
       )}

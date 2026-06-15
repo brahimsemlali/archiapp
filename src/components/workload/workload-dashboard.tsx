@@ -29,9 +29,11 @@ function relationOne<T>(value: T | T[] | null | undefined): T | null {
 export function WorkloadDashboard({
   members,
   unassignedTasks,
+  locale,
 }: {
   members: WorkloadMemberRow[];
   unassignedTasks: UnassignedTaskRow[];
+  locale?: string;
 }) {
   const overloaded = members.filter((member) => member.assignedTasks >= 8 || member.minutesThisWeek >= 2100 || member.overdueTasks > 0);
   const totalOpen = members.reduce((sum, member) => sum + member.assignedTasks, 0) + unassignedTasks.length;
@@ -126,7 +128,7 @@ export function WorkloadDashboard({
                   <div key={task.id} className="rounded-lg border border-[#E5E7EB] p-3">
                     <p className="text-sm font-medium text-[#0B1220]">{task.title}</p>
                     <p className="mt-1 text-xs text-[#64748B]">
-                      {relationOne(task.projects)?.title ?? "Sans projet"}{task.due_date ? ` · ${formatDate(task.due_date)}` : ""}
+                      {relationOne(task.projects)?.title ?? "Sans projet"}{task.due_date ? ` · ${formatDate(task.due_date, locale)}` : ""}
                     </p>
                   </div>
                 ))}

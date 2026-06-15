@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "sonner";
 import { updateDevisStatusAction, deleteDevisAction } from "@/lib/actions/devis";
-import { formatDate, formatMAD } from "@/lib/format";
+import { useLocalization } from "@/components/localization-provider";
 import { Check, Send, X, Trash2, Loader2, Download, Edit, FileText, Receipt } from "lucide-react";
 import Link from "next/link";
 import type { DevisItem } from "@/lib/validators/devis";
@@ -51,6 +51,7 @@ interface DevisDetailProps {
 }
 
 export function DevisDetail({ devis: initial, client, project, firmProfile }: DevisDetailProps) {
+  const { money, formatDate, taxLabel } = useLocalization();
   const [status, setStatus] = useState<DevisStatus>(initial.status);
   const [loading, setLoading] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -190,9 +191,9 @@ export function DevisDetail({ devis: initial, client, project, firmProfile }: De
                 <td className="px-3 py-2">{item.description}</td>
                 <td className="px-3 py-2 text-center">{item.quantity}</td>
                 <td className="px-3 py-2 text-center text-gray-500">{item.unit}</td>
-                <td className="px-3 py-2 text-right">{formatMAD(item.unitPriceCentimes)}</td>
+                <td className="px-3 py-2 text-right">{money(item.unitPriceCentimes)}</td>
                 <td className="px-3 py-2 text-right font-medium">
-                  {formatMAD(Math.round(item.quantity * item.unitPriceCentimes))}
+                  {money(Math.round(item.quantity * item.unitPriceCentimes))}
                 </td>
               </tr>
             ))}
@@ -204,15 +205,15 @@ export function DevisDetail({ devis: initial, client, project, firmProfile }: De
           <div className="w-64 space-y-1.5">
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">{t("subtotal")}</span>
-              <span>{formatMAD(initial.subtotalCentimes)}</span>
+              <span>{money(initial.subtotalCentimes)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">{t("tva", { rate: initial.tvaRate })}</span>
-              <span>{formatMAD(initial.tvaCentimes)}</span>
+              <span className="text-gray-500">{taxLabel} {initial.tvaRate}%</span>
+              <span>{money(initial.tvaCentimes)}</span>
             </div>
             <div className="flex justify-between font-bold text-base border-t pt-2">
               <span>{t("totalTTC")}</span>
-              <span className="text-primary">{formatMAD(initial.totalCentimes)}</span>
+              <span className="text-primary">{money(initial.totalCentimes)}</span>
             </div>
           </div>
         </div>

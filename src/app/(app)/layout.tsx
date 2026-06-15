@@ -9,6 +9,8 @@ import { AppContentShell } from "@/components/layout/app-content-shell";
 import { getWorkspaceId } from "@/lib/workspace";
 import { TrialBanner } from "@/components/billing/trial-banner";
 import { getTrialInfo } from "@/lib/billing/guards";
+import { resolveLocalization } from "@/lib/country-packs";
+import { LocalizationProvider } from "@/components/localization-provider";
 
 export default async function AppLayout({
   children,
@@ -67,23 +69,29 @@ export default async function AppLayout({
     };
   });
 
+  let firmProfile: Record<string, unknown> | null = null;
   if (workspace?.id) {
     if (workspace.account_status === "suspended" || workspace.account_status === "cancelled") {
       redirect("/account-suspended");
     }
 
+    // select * (not named columns) so this works before and after the
+    // worldwide_localization migration adds the localization columns
     const { data: profile } = await supabase
       .from("firm_profile")
-      .select("firm_name")
+      .select("*")
       .eq("workspace_id", workspace.id)
       .maybeSingle();
 
     if (!profile?.firm_name) {
       redirect("/onboarding");
     }
+    firmProfile = profile;
   }
+  const localization = resolveLocalization(firmProfile);
 
   return (
+    <LocalizationProvider value={localization}>
     <div className="premium-app-shell flex h-dvh min-h-dvh overflow-hidden bg-[#F7F8FA]">
       <Sidebar
         userEmail={user.email}
@@ -109,5 +117,6 @@ export default async function AppLayout({
       </div>
       <PwaRegister />
     </div>
+    </LocalizationProvider>
   );
 }

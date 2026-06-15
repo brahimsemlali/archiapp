@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useLocalization } from "@/components/localization-provider";
 import { useTranslations } from "next-intl";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -74,10 +75,6 @@ const STATUS_STYLE: Record<string, string> = {
   termine:  "bg-[#E5F3EB] text-[#2F8F5C] border-transparent",
 };
 
-function formatDate(d: string) {
-  return new Date(d + "T00:00:00").toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
-}
-
 function isOverdue(d: string | null | undefined, status: string) {
   if (!d || status === "termine") return false;
   return new Date(d + "T00:00:00") < new Date(new Date().toDateString());
@@ -121,6 +118,7 @@ export function TaskDetailPanel({
   onMetadataChange,
 }: TaskDetailPanelProps) {
   const t = useTranslations("common");
+  const { formatDayMonth } = useLocalization();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingStatus, setTogglingStatus] = useState(false);
 
@@ -346,7 +344,7 @@ export function TaskDetailPanel({
                     "text-[13px] font-medium tabnum",
                     isOverdue(initialTask.due_date, initialTask.status) ? "text-[#C75B2E]" : "text-[#0B1220]"
                   )}>
-                    {formatDate(initialTask.due_date)}
+                    {formatDayMonth(initialTask.due_date)}
                     {isOverdue(initialTask.due_date, initialTask.status) && (
                       <span className="text-[11px] ml-1.5 font-normal">· En retard</span>
                     )}

@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Plus, Trash2, Loader2 } from "lucide-react";
-import { formatMAD } from "@/lib/format";
+import { useLocalization } from "@/components/localization-provider";
 import type { DevisItem } from "@/lib/validators/devis";
 
 interface FactureFormProps {
@@ -30,6 +30,7 @@ function newItem(): DevisItem {
 }
 
 export function FactureForm({ clients, projects, defaultValues, factureId }: FactureFormProps) {
+  const { money, taxLabel } = useLocalization();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const submittingRef = useRef(false);
@@ -155,7 +156,7 @@ export function FactureForm({ clients, projects, defaultValues, factureId }: Fac
                   <Input type="number" step="0.01" min="0" className="bg-white text-right"
                     value={centimesToInput(watchItems[idx]?.unitPriceCentimes ?? 0)}
                     onChange={(e) => form.setValue(`items.${idx}.unitPriceCentimes`, inputToCentimes(e.target.value))} />
-                  <p className="text-xs text-muted-foreground text-right px-1">= {formatMAD(lineTotal)}</p>
+                  <p className="text-xs text-muted-foreground text-right px-1">= {money(lineTotal)}</p>
                 </div>
                 <Button type="button" variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive mt-0.5" onClick={() => remove(idx)} disabled={fields.length === 1}>
                   <Trash2 className="h-4 w-4" />
@@ -169,7 +170,7 @@ export function FactureForm({ clients, projects, defaultValues, factureId }: Fac
       <div className="flex flex-col sm:flex-row gap-6 justify-between">
         <div className="space-y-3 max-w-xs">
           <div className="space-y-1.5">
-            <Label>TVA (%)</Label>
+            <Label>{taxLabel} (%)</Label>
             <Input type="number" min="0" max="100" step="0.1" className="w-32" {...form.register("tvaRate", { valueAsNumber: true })} />
           </div>
           <div className="space-y-1.5">
@@ -178,10 +179,10 @@ export function FactureForm({ clients, projects, defaultValues, factureId }: Fac
           </div>
         </div>
         <div className="bg-gray-50 border rounded-xl p-4 space-y-2 min-w-[200px] self-start">
-          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Sous-total HT</span><span className="font-medium">{formatMAD(subtotal)}</span></div>
-          <div className="flex justify-between text-sm"><span className="text-muted-foreground">TVA {watchTvaRate}%</span><span className="font-medium">{formatMAD(tva)}</span></div>
+          <div className="flex justify-between text-sm"><span className="text-muted-foreground">Sous-total HT</span><span className="font-medium">{money(subtotal)}</span></div>
+          <div className="flex justify-between text-sm"><span className="text-muted-foreground">{taxLabel} {watchTvaRate}%</span><span className="font-medium">{money(tva)}</span></div>
           <div className="flex justify-between font-bold text-base border-t pt-2">
-            <span>Total TTC</span><span className="text-primary">{formatMAD(total)}</span>
+            <span>Total TTC</span><span className="text-primary">{money(total)}</span>
           </div>
         </div>
       </div>

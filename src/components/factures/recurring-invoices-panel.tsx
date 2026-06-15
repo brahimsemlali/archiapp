@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { formatMAD, formatDate } from "@/lib/format";
+import { useLocalization } from "@/components/localization-provider";
 import { createRecurringInvoiceAction, toggleRecurringInvoiceAction, deleteRecurringInvoiceAction, generateFromRecurringAction } from "@/lib/actions/recurring-invoices";
 import type { RecurringInvoiceRow, RecurringInvoiceValues } from "@/lib/actions/recurring-invoices";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ interface Props {
 }
 
 export function RecurringInvoicesPanel({ initialRecurring, clients }: Props) {
+  const { money, defaultTaxRate, taxLabel, formatDate } = useLocalization();
   const t = useTranslations("common");
   const router = useRouter();
   const [recurringSnapshot, setRecurringSnapshot] = useState({
@@ -35,8 +36,8 @@ export function RecurringInvoicesPanel({ initialRecurring, clients }: Props) {
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState<string | null>(null);
   const [form, setForm] = useState<RecurringInvoiceValues>({
-    title: "", items: [{ description: "", quantity: 1, unitPrice: 0, tvaRate: 20 }],
-    subtotalCentimes: 0, tvaRate: 20, tvaCentimes: 0, totalCentimes: 0,
+    title: "", items: [{ description: "", quantity: 1, unitPrice: 0, tvaRate: defaultTaxRate }],
+    subtotalCentimes: 0, tvaRate: defaultTaxRate, tvaCentimes: 0, totalCentimes: 0,
     frequency: "monthly", nextDate: new Date().toISOString().split("T")[0]!, autoSend: false,
   });
 
@@ -56,7 +57,7 @@ export function RecurringInvoicesPanel({ initialRecurring, clients }: Props) {
     setForm((f) => {
       const items = f.items.map((item, j) => j === i ? { ...item, [field]: value } : item);
       const subtotal = items.reduce((s, it) => s + it.quantity * it.unitPrice, 0);
-      const tva = subtotal * 0.20;
+      const tva = subtotal * (f.tvaRate / 100);
       return { ...f, items, subtotalCentimes: Math.round(subtotal * 100), tvaCentimes: Math.round(tva * 100), totalCentimes: Math.round((subtotal + tva) * 100) };
     });
   }
@@ -146,7 +147,7 @@ export function RecurringInvoicesPanel({ initialRecurring, clients }: Props) {
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span className="font-semibold text-sm">{formatMAD(r.total_centimes)}</span>
+                <span className="font-semibold text-sm">{money(r.total_centimes)}</span>
                 <Button
                   size="sm"
                   variant="outline"
@@ -207,18 +208,18 @@ export function RecurringInvoicesPanel({ initialRecurring, clients }: Props) {
                   <Input value={item.description} onChange={(e) => updateItem(i, "description", e.target.value)} placeholder="Désignation" className="text-xs" />
                   <Input type="number" value={item.quantity || ""} onChange={(e) => updateItem(i, "quantity", parseFloat(e.target.value) || 0)} placeholder="Qté" className="text-xs" />
                   <Input type="number" value={item.unitPrice || ""} onChange={(e) => updateItem(i, "unitPrice", parseFloat(e.target.value) || 0)} placeholder="PU (MAD)" className="text-xs" />
-                  <button onClick={() => setForm((f) => { const items = f.items.filter((_, j) => j !== i); const sub = items.reduce((s, it) => s + it.quantity * it.unitPrice, 0); return { ...f, items, subtotalCentimes: Math.round(sub * 100), tvaCentimes: Math.round(sub * 0.20 * 100), totalCentimes: Math.round(sub * 1.20 * 100) }; })} className="text-red-400 hover:text-red-600 text-lg leading-none">×</button>
+                  <button onClick={() => setForm((f) => { const items = f.items.filter((_, j) => j !== i); const sub = items.reduce((s, it) => s + it.quantity * it.unitPrice, 0); return { ...f, items, subtotalCentimes: Math.round(sub * 100), tvaCentimes: Math.round(sub * (f.tvaRate / 100) * 100), totalCentimes: Math.round(sub * (1 + f.tvaRate / 100) * 100) }; })} className="text-red-400 hover:text-red-600 text-lg leading-none">×</button>
                 </div>
               ))}
-              <Button variant="outline" size="sm" onClick={() => setForm((f) => ({ ...f, items: [...f.items, { description: "", quantity: 1, unitPrice: 0, tvaRate: 20 }] }))}>
+              <Button variant="outline" size="sm" onClick={() => setForm((f) => ({ ...f, items: [...f.items, { description: "", quantity: 1, unitPrice: 0, tvaRate: f.tvaRate }] }))}>
                 <Plus className="h-3.5 w-3.5 mr-1" />Ligne
               </Button>
             </div>
             {form.totalCentimes > 0 && (
               <div className="bg-[#F1F5F9] rounded-lg p-3 text-sm space-y-1">
-                <div className="flex justify-between"><span className="text-[#64748B]">Sous-total HT</span><span>{formatMAD(form.subtotalCentimes)}</span></div>
-                <div className="flex justify-between"><span className="text-[#64748B]">TVA 20%</span><span>{formatMAD(form.tvaCentimes)}</span></div>
-                <div className="flex justify-between font-semibold"><span>Total TTC</span><span>{formatMAD(form.totalCentimes)}</span></div>
+                <div className="flex justify-between"><span className="text-[#64748B]">Sous-total HT</span><span>{money(form.subtotalCentimes)}</span></div>
+                <div className="flex justify-between"><span className="text-[#64748B]">{taxLabel} {form.tvaRate}%</span><span>{money(form.tvaCentimes)}</span></div>
+                <div className="flex justify-between font-semibold"><span>Total TTC</span><span>{money(form.totalCentimes)}</span></div>
               </div>
             )}
             <div className="flex gap-2 pt-1">

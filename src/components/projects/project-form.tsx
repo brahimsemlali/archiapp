@@ -1,6 +1,7 @@
 "use client";
 
 import { useForm } from "react-hook-form";
+import { useTranslations } from "next-intl";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { projectSchema, type ProjectFormValues } from "@/lib/validators/project";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,9 @@ const STATUSES = [
 ] as const;
 
 export function ProjectForm({ clients, defaultValues, onSubmit, loading }: ProjectFormProps) {
+  const tPhase = useTranslations("phase");
+  const tType = useTranslations("projectType");
+  const tStatus = useTranslations("status.project");
   const {
     register,
     handleSubmit,
@@ -114,8 +118,8 @@ export function ProjectForm({ clients, defaultValues, onSubmit, loading }: Proje
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {PROJECT_TYPES.map(({ value, label }) => (
-                <SelectItem key={value} value={value}>{label}</SelectItem>
+              {PROJECT_TYPES.map(({ value }) => (
+                <SelectItem key={value} value={value}>{tType.has(value) ? tType(value) : value}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -131,8 +135,8 @@ export function ProjectForm({ clients, defaultValues, onSubmit, loading }: Proje
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {PHASES.map(({ value, label }) => (
-                <SelectItem key={value} value={value}>{label}</SelectItem>
+              {PHASES.map(({ value }) => (
+                <SelectItem key={value} value={value}>{tPhase.has(value) ? tPhase(value) : value}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -148,8 +152,8 @@ export function ProjectForm({ clients, defaultValues, onSubmit, loading }: Proje
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {STATUSES.map(({ value, label }) => (
-                <SelectItem key={value} value={value}>{label}</SelectItem>
+              {STATUSES.map(({ value }) => (
+                <SelectItem key={value} value={value}>{tStatus.has(value) ? tStatus(value) : value}</SelectItem>
               ))}
             </SelectContent>
           </Select>
