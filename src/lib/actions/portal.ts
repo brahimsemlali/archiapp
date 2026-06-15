@@ -12,6 +12,12 @@ import { portalMessageEmail, architectReplyEmail, APP_URL } from "@/lib/email/te
 import { notifyWorkspace } from "@/lib/push";
 import { assertRateLimit } from "@/lib/security/rate-limit";
 import { dbError } from "@/lib/db-error";
+import {
+  PORTAL_SECTION_KEYS,
+  getPortalMeta,
+  type PortalSectionKey,
+  type PortalUpdate,
+} from "@/lib/portal-sections";
 
 const STORAGE_BUCKET = "project-files";
 const MAX_PORTAL_MESSAGE_LENGTH = 2_000;
@@ -409,6 +415,143 @@ export async function revokeClientPortalLinkAction(
     .eq("resource_type", "client")
     .eq("resource_id", clientId)
     .is("expires_at", null);
+
+  revalidatePath(`/clients/${clientId}`);
+  return { ok: true, data: undefined };
+}
+
+const MAX_PORTAL_UPDATE_LENGTH = 1_000;
+
+// Architect chooses which portal sections this client sees. Stored in
+// clients.metadata.portal.visibility (no migration; survives link regeneration).
+export async function updateClientPortalVisibilityAction(
+  clientId: string,
+  visibility: Partial<Record<PortalSectionKey, boolean>>
+): Promise<Result<void>> {
+  const supabase = await createClient();
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
+
+  // Only accept known section keys.
+  const clean: Partial<Record<PortalSectionKey, boolean>> = {};
+  for (const key of PORTAL_SECTION_KEYS) {
+    const value = visibility[key];
+    if (typeof value === "boolean") clean[key] = value;
+  }
+  if (Object.keys(clean).length === 0) return { ok: false, error: "Aucune modification." };
+
+  const { data: client } = await supabase
+    .from("clients")
+    .select("metadata")
+    .eq("id", clientId)
+    .eq("workspace_id", workspaceId)
+    .single();
+  if (!client) return { ok: false, error: "Client introuvable." };
+
+  const metadata = (client.metadata as Record<string, unknown> | null) ?? {};
+  const portal = getPortalMeta(metadata);
+  const nextMetadata = {
+    ...metadata,
+    portal: { ...portal, visibility: { ...(portal.visibility ?? {}), ...clean } },
+  };
+
+  const { error } = await supabase
+    .from("clients")
+    .update({ metadata: nextMetadata })
+    .eq("id", clientId)
+    .eq("workspace_id", workspaceId);
+  if (error) return { ok: false, error: dbError(error) };
+
+  revalidatePath(`/clients/${clientId}`);
+  return { ok: true, data: undefined };
+}
+
+// Architect posts a short client-facing update (the "Notes & mises à jour" feed).
+export async function addClientPortalUpdateAction(
+  clientId: string,
+  body: string
+): Promise<Result<PortalUpdate>> {
+  const supabase = await createClient();
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
+
+  const trimmed = body.trim();
+  if (trimmed.length < 2) return { ok: false, error: "Message trop court." };
+  if (trimmed.length > MAX_PORTAL_UPDATE_LENGTH) return { ok: false, error: "Message trop long." };
+
+  const { data: client } = await supabase
+    .from("clients")
+    .select("metadata")
+    .eq("id", clientId)
+    .eq("workspace_id", workspaceId)
+    .single();
+  if (!client) return { ok: false, error: "Client introuvable." };
+
+  const { data: firm } = await supabase
+    .from("firm_profile")
+    .select("architect_name, firm_name")
+    .eq("workspace_id", workspaceId)
+    .maybeSingle();
+  const authorName = firm?.architect_name ?? firm?.firm_name ?? null;
+
+  const metadata = (client.metadata as Record<string, unknown> | null) ?? {};
+  const portal = getPortalMeta(metadata);
+  const updates: PortalUpdate[] = Array.isArray(portal.updates) ? portal.updates : [];
+  const newUpdate: PortalUpdate = {
+    id: crypto.randomUUID(),
+    body: trimmed,
+    createdAt: new Date().toISOString(),
+    authorName,
+  };
+  const nextMetadata = {
+    ...metadata,
+    portal: { ...portal, updates: [...updates, newUpdate] },
+  };
+
+  const { error } = await supabase
+    .from("clients")
+    .update({ metadata: nextMetadata })
+    .eq("id", clientId)
+    .eq("workspace_id", workspaceId);
+  if (error) return { ok: false, error: dbError(error) };
+
+  revalidatePath(`/clients/${clientId}`);
+  return { ok: true, data: newUpdate };
+}
+
+export async function deleteClientPortalUpdateAction(
+  clientId: string,
+  updateId: string
+): Promise<Result<void>> {
+  const supabase = await createClient();
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
+
+  const { data: client } = await supabase
+    .from("clients")
+    .select("metadata")
+    .eq("id", clientId)
+    .eq("workspace_id", workspaceId)
+    .single();
+  if (!client) return { ok: false, error: "Client introuvable." };
+
+  const metadata = (client.metadata as Record<string, unknown> | null) ?? {};
+  const portal = getPortalMeta(metadata);
+  const updates: PortalUpdate[] = Array.isArray(portal.updates) ? portal.updates : [];
+  const nextMetadata = {
+    ...metadata,
+    portal: { ...portal, updates: updates.filter((u) => u.id !== updateId) },
+  };
+
+  const { error } = await supabase
+    .from("clients")
+    .update({ metadata: nextMetadata })
+    .eq("id", clientId)
+    .eq("workspace_id", workspaceId);
+  if (error) return { ok: false, error: dbError(error) };
 
   revalidatePath(`/clients/${clientId}`);
   return { ok: true, data: undefined };

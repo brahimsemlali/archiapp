@@ -14,11 +14,20 @@ import {
   createClientPortalMessageAction,
   replyToClientPortalAction,
   respondClientPortalFileApprovalAction,
+  updateClientPortalVisibilityAction,
+  addClientPortalUpdateAction,
+  deleteClientPortalUpdateAction,
 } from "@/lib/actions/portal";
 import { signMeetingPvAction } from "@/lib/actions/meeting-intelligence";
 import { cn } from "@/lib/utils";
 import { useRef, useEffect } from "react";
-import { formatRelative, formatDate } from "@/lib/format";
+import { useLocalization } from "@/components/localization-provider";
+import {
+  PORTAL_SECTIONS,
+  PORTAL_GROUPS,
+  type PortalSectionKey,
+  type PortalUpdate,
+} from "@/lib/portal-sections";
 
 export function ClientPortalShare({
   clientId,
@@ -31,6 +40,8 @@ export function ClientPortalShare({
   lastAccessedAt: string | null;
   accessCount: number;
 }) {
+  const { formatRelative } = useLocalization();
+  const router = useRouter();
   const [url, setUrl] = useState(existingUrl);
   const [creating, startCreate] = useTransition();
   const [revoking, startRevoke] = useTransition();
@@ -41,6 +52,7 @@ export function ClientPortalShare({
       if (!result.ok) { toast.error(result.error); return; }
       setUrl(result.data.url);
       toast.success("Portail client créé.");
+      router.refresh(); // reveal the sharing panel + discussion (server-rendered on clientPortalLink)
     });
   }
 
@@ -50,6 +62,7 @@ export function ClientPortalShare({
       if (!result.ok) { toast.error(result.error); return; }
       setUrl(null);
       toast.success("Accès client révoqué.");
+      router.refresh();
     });
   }
 
@@ -125,6 +138,7 @@ export function ArchitectReplyForm({
   messages: PortalMessage[];
   firmName: string | null;
 }) {
+  const { formatDate } = useLocalization();
   const [body, setBody] = useState("");
   const [pending, startTransition] = useTransition();
 
@@ -461,6 +475,164 @@ export function PortalMeetingPvSign({
       >
         {saving ? "Signature en cours..." : "Confirmer la signature"}
       </button>
+    </div>
+  );
+}
+
+function PortalToggle({ on, onClick, disabled }: { on: boolean; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:opacity-50",
+        on ? "bg-primary" : "bg-gray-200"
+      )}
+    >
+      <span
+        className={cn(
+          "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform",
+          on ? "translate-x-4" : "translate-x-0.5"
+        )}
+      />
+    </button>
+  );
+}
+
+export function ClientPortalSharing({
+  clientId,
+  initialVisibility,
+  initialUpdates,
+}: {
+  clientId: string;
+  initialVisibility: Record<PortalSectionKey, boolean>;
+  initialUpdates: PortalUpdate[];
+}) {
+  const { formatDate } = useLocalization();
+  const [visibility, setVisibility] = useState(initialVisibility);
+  // Ref mirrors latest visibility so rapid toggles always save the FULL intended
+  // map — never a stale delta that could silently re-expose a section.
+  const visibilityRef = useRef(visibility);
+  const [updates, setUpdates] = useState<PortalUpdate[]>(initialUpdates);
+  const [savingKey, setSavingKey] = useState<PortalSectionKey | null>(null);
+  const [body, setBody] = useState("");
+  const [posting, startPost] = useTransition();
+
+  function toggle(key: PortalSectionKey) {
+    const next = { ...visibilityRef.current, [key]: !visibilityRef.current[key] };
+    visibilityRef.current = next;
+    setVisibility(next);
+    setSavingKey(key);
+    // Send the complete map so concurrent saves resolve to full UI intent.
+    updateClientPortalVisibilityAction(clientId, next).then((result) => {
+      setSavingKey(null);
+      if (!result.ok) {
+        const reverted = { ...visibilityRef.current, [key]: !next[key] };
+        visibilityRef.current = reverted;
+        setVisibility(reverted);
+        toast.error(result.error);
+      }
+    });
+  }
+
+  function postUpdate() {
+    const trimmed = body.trim();
+    if (!trimmed) return;
+    startPost(async () => {
+      const result = await addClientPortalUpdateAction(clientId, trimmed);
+      if (!result.ok) { toast.error(result.error); return; }
+      setUpdates((u) => [result.data, ...u]);
+      setBody("");
+      toast.success("Mise à jour publiée.");
+    });
+  }
+
+  function removeUpdate(id: string) {
+    const prev = updates;
+    setUpdates((u) => u.filter((x) => x.id !== id));
+    deleteClientPortalUpdateAction(clientId, id).then((result) => {
+      if (!result.ok) { setUpdates(prev); toast.error(result.error); }
+    });
+  }
+
+  return (
+    <div className="space-y-5 rounded-xl border border-gray-100 bg-white p-4">
+      <div>
+        <p className="text-sm font-semibold text-gray-900">Ce que le client voit</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Activez ou masquez chaque section de l&apos;espace client. Les modifications sont immédiates.
+        </p>
+      </div>
+
+      {PORTAL_GROUPS.map((group) => {
+        const sections = PORTAL_SECTIONS.filter((s) => s.group === group.id);
+        return (
+          <div key={group.id} className="space-y-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{group.label}</p>
+            <div className="divide-y divide-gray-50 rounded-lg border border-gray-100">
+              {sections.map((section) => (
+                <div key={section.key} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800">{section.label}</p>
+                    <p className="text-xs text-muted-foreground">{section.description}</p>
+                  </div>
+                  <PortalToggle
+                    on={visibility[section.key]}
+                    onClick={() => toggle(section.key)}
+                    disabled={savingKey === section.key}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+
+      <div className="space-y-2 border-t border-gray-100 pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-gray-900">Notes & mises à jour</p>
+          {!visibility.notes && (
+            <span className="text-[11px] text-amber-600">Masqué — activez « Notes &amp; mises à jour » ci-dessus</span>
+          )}
+        </div>
+        <Textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder="Ex : Permis de construire déposé, réponse attendue sous 6 semaines."
+          rows={2}
+          className="text-sm"
+        />
+        <div className="flex justify-end">
+          <Button size="sm" onClick={postUpdate} disabled={posting || !body.trim()}>
+            {posting ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Send className="h-3.5 w-3.5 mr-1.5" />}
+            Publier
+          </Button>
+        </div>
+        {updates.length > 0 && (
+          <div className="space-y-2 pt-1">
+            {updates.map((u) => (
+              <div key={u.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="flex-1 text-sm text-gray-700 whitespace-pre-wrap">{u.body}</p>
+                  <button
+                    onClick={() => removeUpdate(u.id)}
+                    className="shrink-0 text-gray-300 hover:text-red-500"
+                    aria-label="Supprimer"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <p className="mt-1 text-[11px] text-gray-400">
+                  {formatDate(u.createdAt)}{u.authorName ? ` · ${u.authorName}` : ""}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

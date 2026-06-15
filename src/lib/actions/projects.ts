@@ -153,10 +153,23 @@ export async function updateProjectChecklistAction(
 
   if (!project) return { ok: false, error: "Projet introuvable." };
 
+  // Items are now free-form (architect-editable) — sanitize before storing.
+  const MAX_ITEMS_PER_PHASE = 50;
+  const MAX_LABEL = 140;
+  const cleanChecklist: Record<string, ChecklistItem[]> = {};
+  for (const [p, items] of Object.entries(checklist ?? {})) {
+    if (!Array.isArray(items)) continue;
+    cleanChecklist[p] = items
+      .filter((i): i is ChecklistItem => !!i && typeof i.label === "string")
+      .slice(0, MAX_ITEMS_PER_PHASE)
+      .map((i) => ({ label: i.label.trim().slice(0, MAX_LABEL), done: Boolean(i.done) }))
+      .filter((i) => i.label.length > 0);
+  }
+
   const metadata = (project.metadata as Record<string, unknown>) ?? {};
   const { data: updatedProject, error } = await supabase
     .from("projects")
-    .update({ metadata: { ...metadata, checklist }, updated_at: new Date().toISOString() })
+    .update({ metadata: { ...metadata, checklist: cleanChecklist }, updated_at: new Date().toISOString() })
     .eq("id", id)
     .eq("workspace_id", workspaceId)
     .select("id")

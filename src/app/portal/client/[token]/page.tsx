@@ -2,15 +2,21 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { requireWorkspaceAccountActive } from "@/lib/workspace";
 import Image from "next/image";
-import { formatDate, formatMAD } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
+import { resolveLocalization } from "@/lib/country-packs";
+import { getTranslations } from "next-intl/server";
+import { getServerFormatters } from "@/lib/formatters-server";
 import {
   Building2, Calendar, CheckCircle2, Circle, Clock, FileText,
   MessageCircle, Receipt, Ruler, Image as ImageIcon, Activity,
   Hammer, Download, PenLine, FolderOpen, UserPlus, Briefcase,
-  AlertCircle,
+  AlertCircle, TrendingUp, AlertTriangle, Megaphone, Timer, BookOpen,
 } from "lucide-react";
 import { SignaturePadPortal } from "@/components/contracts/signature-pad-portal";
 import { ClientPortalDevisResponse, ClientPortalMessageForm, ClientPortalFileApproval, PortalMeetingPvSign } from "@/components/portal/client-portal-actions";
+import { resolveVisibility, getPortalUpdates } from "@/lib/portal-sections";
+import { signInspirationItems } from "@/lib/storage/signed-images";
+import type { InspirationItem } from "@/components/projects/inspiration-board";
 
 const PHASES = [
   { key: "esquisse", label: "Esquisse" },
@@ -130,22 +136,36 @@ export default async function ClientPortalPage({
     { data: firmProfile },
     { data: messages },
   ] = await Promise.all([
-    supabase.from("clients").select("name, type, phone, email").eq("id", clientId).eq("workspace_id", workspaceId).single(),
-    supabase.from("projects").select("id, title, phase, address, surface_m2, start_date, target_end_date, type, fees_centimes").eq("workspace_id", workspaceId).eq("client_id", clientId).is("archived_at", null).order("created_at", { ascending: false }),
+    supabase.from("clients").select("name, type, phone, email, metadata").eq("id", clientId).eq("workspace_id", workspaceId).single(),
+    supabase.from("projects").select("id, title, phase, address, surface_m2, start_date, target_end_date, type, fees_centimes, metadata").eq("workspace_id", workspaceId).eq("client_id", clientId).is("archived_at", null).order("created_at", { ascending: false }),
     supabase.from("contracts").select("id, title, type, status, version, created_at").eq("workspace_id", workspaceId).eq("client_id", clientId).eq("status", "finalise").order("created_at", { ascending: false }),
     supabase.from("devis").select("id, number, title, status, total_centimes, valid_until, created_at").eq("workspace_id", workspaceId).eq("client_id", clientId).neq("status", "brouillon").order("created_at", { ascending: false }),
     supabase.from("factures").select("id, number, title, status, total_centimes, due_date, paid_at, created_at").eq("workspace_id", workspaceId).eq("client_id", clientId).neq("status", "brouillon").order("created_at", { ascending: false }),
     supabase.from("moodboards").select("id, title, description, items, created_at").eq("workspace_id", workspaceId).eq("client_id", clientId).order("created_at", { ascending: false }),
     supabase.from("activity_log").select("id, action, metadata, created_at").eq("workspace_id", workspaceId).eq("client_id", clientId).order("created_at", { ascending: false }).limit(40),
-    supabase.from("firm_profile").select("firm_name, architect_name, logo_url, address, phone, email, iban").eq("workspace_id", workspaceId).single(),
+    supabase.from("firm_profile").select("*").eq("workspace_id", workspaceId).single(),
     supabase.from("portal_messages").select("id, sender, sender_name, body, created_at").eq("workspace_id", workspaceId).eq("client_id", clientId).eq("share_token", token).order("created_at", { ascending: true }),
   ]);
 
+  const { currency, timezone } = resolveLocalization(firmProfile);
+  const { formatDate } = await getServerFormatters(timezone);
+  const tPhase = await getTranslations("phase");
+  const money = (centimes: number) => formatMoney(centimes, currency);
+
   if (!client) notFound();
+
+  // Re-sign uploaded moodboard images — the stored item.url is a 1h signed URL that's stale by
+  // the time the client opens the portal. Links (no path) pass through unchanged.
+  const signedMoodboards = await Promise.all(
+    (moodboards ?? []).map(async (b) => ({
+      ...b,
+      items: await signInspirationItems(supabase, (b.items as InspirationItem[]) ?? []),
+    }))
+  );
 
   const projectIds = (projects ?? []).map((p) => p.id);
 
-  const [{ data: siteVisits }, { data: meetingNotes }, { data: sharedFiles }] = await Promise.all([
+  const [{ data: siteVisits }, { data: meetingNotes }, { data: sharedFiles }, { data: timeEntries }, { data: siteIssues }] = await Promise.all([
     projectIds.length > 0
       ? supabase.from("site_visits").select("id, title, visit_date, weather, attendees, summary, observations, project_id").eq("workspace_id", workspaceId).in("project_id", projectIds).not("summary", "is", null).order("visit_date", { ascending: false })
       : { data: [] as { id: string; title: string; visit_date: string; weather: string | null; attendees: string[] | null; summary: string | null; observations: unknown; project_id: string }[] },
@@ -155,6 +175,12 @@ export default async function ClientPortalPage({
     projectIds.length > 0
       ? supabase.from("files").select("id, filename, folder, size_bytes, mime_type, storage_path, approval_status, approved_at, approval_note, project_id, created_at").eq("workspace_id", workspaceId).in("project_id", projectIds).in("approval_status", ["pending", "approved"]).order("created_at", { ascending: false })
       : { data: [] as { id: string; filename: string; folder: string; size_bytes: number | null; mime_type: string | null; storage_path: string; approval_status: string; approved_at: string | null; approval_note: string | null; project_id: string; created_at: string }[] },
+    projectIds.length > 0
+      ? supabase.from("time_entries").select("project_id, duration_minutes, billable").eq("workspace_id", workspaceId).in("project_id", projectIds)
+      : { data: [] as { project_id: string | null; duration_minutes: number; billable: boolean }[] },
+    projectIds.length > 0
+      ? supabase.from("site_issues").select("id, title, zone, priority, status, due_date, photo_url, project_id").eq("workspace_id", workspaceId).in("project_id", projectIds).in("status", ["open", "in_progress"]).order("created_at", { ascending: false })
+      : { data: [] as { id: string; title: string; zone: string | null; priority: string; status: string; due_date: string | null; photo_url: string | null; project_id: string }[] },
   ]);
 
   // Generate signed download URLs for shared files
@@ -200,24 +226,41 @@ export default async function ClientPortalPage({
   const totalPending = (facturesList ?? []).filter((f) => f.status === "envoyee").reduce((s, f) => s + f.total_centimes, 0);
   const totalRemaining = Math.max(0, totalFees - totalPaid);
 
-  // Action required items
-  const pendingDevis = (devisList ?? []).filter((d) => d.status === "envoye");
-  const unsignedContracts = (contracts ?? []).filter((c) => !signatureByContract[c.id]);
-  const overdueFactures = (facturesList ?? []).filter((f) => f.status === "envoyee" && f.due_date && new Date(f.due_date) < new Date());
-  const pendingFiles = filesWithUrls.filter((f) => f.approval_status === "pending");
-  const unsignedPvs = (meetingNotes ?? []).filter((m) => !m.pv_signed_at);
+  // Architect-controlled section visibility (smart defaults; existing portals need no backfill)
+  const vis = resolveVisibility(client.metadata);
+  const portalUpdates = vis.notes ? getPortalUpdates(client.metadata) : [];
+
+  // Temps passé — total minutes per project
+  const minutesByProject = new Map<string, number>();
+  for (const entry of timeEntries ?? []) {
+    if (!entry.project_id) continue;
+    minutesByProject.set(entry.project_id, (minutesByProject.get(entry.project_id) ?? 0) + (entry.duration_minutes ?? 0));
+  }
+  const totalMinutes = [...minutesByProject.values()].reduce((s, m) => s + m, 0);
+  const openIssues = siteIssues ?? [];
+
+  // Action required items — only count sections the client can actually see
+  const pendingDevis = vis.devis ? (devisList ?? []).filter((d) => d.status === "envoye") : [];
+  const unsignedContracts = vis.contrats ? (contracts ?? []).filter((c) => !signatureByContract[c.id]) : [];
+  const overdueFactures = vis.factures ? (facturesList ?? []).filter((f) => f.status === "envoyee" && f.due_date && new Date(f.due_date) < new Date()) : [];
+  const pendingFiles = vis.documents ? filesWithUrls.filter((f) => f.approval_status === "pending") : [];
+  const unsignedPvs = vis.chantier ? (meetingNotes ?? []).filter((m) => !m.pv_signed_at) : [];
   const actionCount = pendingDevis.length + unsignedContracts.length + overdueFactures.length + pendingFiles.length + unsignedPvs.length;
 
   const navItems = [
-    { id: "projets", label: "Projets", show: (projects ?? []).length > 0 },
-    { id: "contrats", label: "Contrats", show: (contracts ?? []).length > 0 },
-    { id: "devis", label: "Devis", show: (devisList ?? []).length > 0 },
-    { id: "factures", label: "Factures", show: (facturesList ?? []).length > 0 },
-    { id: "fichiers", label: "Fichiers", show: filesWithUrls.length > 0 },
-    { id: "chantier", label: "Comptes-rendus", show: (siteVisits ?? []).length > 0 || (meetingNotes ?? []).length > 0 },
-    { id: "inspirations", label: "Inspirations", show: (moodboards ?? []).length > 0 },
-    { id: "historique", label: "Historique", show: (activityLog ?? []).length > 0 },
-    { id: "discussion", label: "Discussion", show: true },
+    { id: "notes", label: "Mises à jour", show: vis.notes && portalUpdates.length > 0 },
+    { id: "projets", label: "Projets", show: vis.projets && (projects ?? []).length > 0 },
+    { id: "avancement", label: "Avancement", show: vis.avancement && (projects ?? []).length > 0 },
+    { id: "contrats", label: "Contrats", show: vis.contrats && (contracts ?? []).length > 0 },
+    { id: "devis", label: "Devis", show: vis.devis && (devisList ?? []).length > 0 },
+    { id: "factures", label: "Factures", show: vis.factures && (facturesList ?? []).length > 0 },
+    { id: "fichiers", label: "Documents", show: vis.documents && filesWithUrls.length > 0 },
+    { id: "chantier", label: "Comptes-rendus", show: vis.chantier && ((siteVisits ?? []).length > 0 || (meetingNotes ?? []).length > 0) },
+    { id: "blocages", label: "Blocages", show: vis.blocages && openIssues.length > 0 },
+    { id: "temps", label: "Temps passé", show: vis.temps && totalMinutes > 0 },
+    { id: "inspirations", label: "Inspirations", show: vis.inspirations && signedMoodboards.length > 0 },
+    { id: "historique", label: "Historique", show: vis.historique && (activityLog ?? []).length > 0 },
+    { id: "discussion", label: "Discussion", show: vis.discussion },
   ].filter((n) => n.show);
 
   return (
@@ -277,25 +320,25 @@ export default async function ClientPortalPage({
               {totalFees > 0 && (
                 <div className="rounded-2xl border border-[#E8E6DF] bg-white/78 px-3 py-2.5 shadow-sm">
                   <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">Honoraires</p>
-                  <p className="text-sm font-bold text-gray-800">{formatMAD(totalFees)}</p>
+                  <p className="text-sm font-bold text-gray-800">{money(totalFees)}</p>
                 </div>
               )}
               {totalPaid > 0 && (
                 <div className="rounded-2xl bg-emerald-50 border border-emerald-100 px-3 py-2.5 shadow-sm">
                   <p className="text-[10px] text-emerald-600 uppercase tracking-wide mb-0.5">Réglé</p>
-                  <p className="text-sm font-bold text-emerald-700">{formatMAD(totalPaid)}</p>
+                  <p className="text-sm font-bold text-emerald-700">{money(totalPaid)}</p>
                 </div>
               )}
               {totalPending > 0 && (
                 <div className="rounded-2xl bg-amber-50 border border-amber-100 px-3 py-2.5 shadow-sm">
                   <p className="text-[10px] text-amber-600 uppercase tracking-wide mb-0.5">En attente</p>
-                  <p className="text-sm font-bold text-amber-700">{formatMAD(totalPending)}</p>
+                  <p className="text-sm font-bold text-amber-700">{money(totalPending)}</p>
                 </div>
               )}
               {totalFees > 0 && totalRemaining > 0 && (
                 <div className="rounded-2xl bg-blue-50 border border-blue-100 px-3 py-2.5 shadow-sm">
                   <p className="text-[10px] text-blue-600 uppercase tracking-wide mb-0.5">Solde restant</p>
-                  <p className="text-sm font-bold text-blue-700">{formatMAD(totalRemaining)}</p>
+                  <p className="text-sm font-bold text-blue-700">{money(totalRemaining)}</p>
                 </div>
               )}
             </div>
@@ -356,8 +399,25 @@ export default async function ClientPortalPage({
           </div>
         )}
 
+        {/* Architect updates feed */}
+        {vis.notes && portalUpdates.length > 0 && (
+          <section id="notes">
+            <SectionTitle icon={<Megaphone className="h-4 w-4" />} title="Mises à jour" count={portalUpdates.length} />
+            <div className="space-y-2 mt-3">
+              {portalUpdates.map((u) => (
+                <div key={u.id} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{u.body}</p>
+                  <p className="text-xs text-gray-400 mt-2">
+                    {formatDate(u.createdAt)}{u.authorName ? ` · ${u.authorName}` : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Projects */}
-        {(projects ?? []).length > 0 && (
+        {vis.projets && (projects ?? []).length > 0 && (
           <section id="projets">
             <SectionTitle icon={<Ruler className="h-4 w-4" />} title="Projets" count={(projects ?? []).length} />
             <div className="space-y-3 mt-3">
@@ -376,7 +436,7 @@ export default async function ClientPortalPage({
                       <div className="flex flex-wrap gap-2 text-xs text-gray-400">
                         {project.surface_m2 && <span className="bg-gray-50 px-2 py-0.5 rounded">{project.surface_m2} m²</span>}
                         {project.start_date && <span className="bg-gray-50 px-2 py-0.5 rounded flex items-center gap-1"><Calendar className="h-3 w-3" />{formatDate(project.start_date)}</span>}
-                        {project.fees_centimes && <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-medium">{formatMAD(project.fees_centimes)}</span>}
+                        {project.fees_centimes && <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-medium">{money(project.fees_centimes)}</span>}
                       </div>
                     </div>
                     {/* Horizontal phase stepper */}
@@ -399,7 +459,7 @@ export default async function ClientPortalPage({
                                   )}
                                 </div>
                                 <span className={`text-[9px] font-medium text-center leading-tight px-0.5 truncate w-full text-center ${current ? "text-blue-600" : done ? "text-emerald-600" : "text-gray-300"}`}>
-                                  {phase.label}
+                                  {tPhase.has(phase.key) ? tPhase(phase.key) : phase.label}
                                 </span>
                               </div>
                               {!last && (
@@ -417,8 +477,52 @@ export default async function ClientPortalPage({
           </section>
         )}
 
+        {/* Advancement & milestones */}
+        {vis.avancement && (projects ?? []).length > 0 && (
+          <section id="avancement">
+            <SectionTitle icon={<TrendingUp className="h-4 w-4" />} title="Avancement & jalons" />
+            <div className="space-y-3 mt-3">
+              {(projects ?? []).map((project) => {
+                const { pct, done, total } = computeAdvancement(project.phase, project.metadata);
+                const currentPhase = PHASES.find((p) => p.key === project.phase);
+                const checklist = phaseChecklist(project.metadata, project.phase);
+                return (
+                  <div key={project.id} className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <p className="font-semibold text-gray-900">{project.title}</p>
+                      <span className="text-sm font-bold text-blue-600">{pct}%</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                      <div className="h-full rounded-full bg-blue-500 transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400">
+                      {currentPhase && <span>Phase : <strong className="text-gray-600">{tPhase.has(currentPhase.key) ? tPhase(currentPhase.key) : currentPhase.label}</strong></span>}
+                      {project.target_end_date && <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />Échéance {formatDate(project.target_end_date)}</span>}
+                      {total > 0 && <span>Livrables : <strong className="text-gray-600">{done}/{total}</strong></span>}
+                    </div>
+                    {checklist.length > 0 && (
+                      <div className="mt-3 space-y-1.5">
+                        {checklist.map((item, i) => (
+                          <div key={i} className="flex items-center gap-2 text-xs">
+                            {item.done ? (
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                            ) : (
+                              <Circle className="h-3.5 w-3.5 text-gray-300 shrink-0" />
+                            )}
+                            <span className={item.done ? "text-gray-500 line-through" : "text-gray-600"}>{item.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         {/* Contracts */}
-        {(contracts ?? []).length > 0 && (
+        {vis.contrats && (contracts ?? []).length > 0 && (
           <section id="contrats">
             <SectionTitle icon={<FileText className="h-4 w-4" />} title="Contrats" count={(contracts ?? []).length} />
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mt-3">
@@ -433,6 +537,14 @@ export default async function ClientPortalPage({
                           <p className="text-xs text-gray-400 mt-0.5">
                             {CONTRACT_TYPE_LABELS[contract.type] ?? contract.type} · {formatDate(contract.created_at)}
                           </p>
+                          <a
+                            href={`/api/portal/client/${token}/contracts/${contract.id}/pdf`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline"
+                          >
+                            <BookOpen className="h-3 w-3" /> Lire le contrat
+                          </a>
                         </div>
                         {sig ? (
                           <span className="shrink-0 text-xs px-2.5 py-1 rounded-full font-medium bg-emerald-100 text-emerald-700 flex items-center gap-1">
@@ -461,7 +573,7 @@ export default async function ClientPortalPage({
         )}
 
         {/* Devis */}
-        {(devisList ?? []).length > 0 && (
+        {vis.devis && (devisList ?? []).length > 0 && (
           <section id="devis">
             <SectionTitle icon={<Receipt className="h-4 w-4" />} title="Devis" count={(devisList ?? []).length} />
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mt-3">
@@ -472,7 +584,7 @@ export default async function ClientPortalPage({
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-gray-900">{devis.title}</p>
                         <p className="text-xs text-gray-400 mt-0.5">
-                          {devis.number} · <strong>{formatMAD(devis.total_centimes)}</strong>
+                          {devis.number} · <strong>{money(devis.total_centimes)}</strong>
                           {devis.valid_until && ` · valable jusqu'au ${formatDate(devis.valid_until)}`}
                         </p>
                       </div>
@@ -507,7 +619,7 @@ export default async function ClientPortalPage({
         )}
 
         {/* Factures */}
-        {(facturesList ?? []).length > 0 && (
+        {vis.factures && (facturesList ?? []).length > 0 && (
           <section id="factures">
             <SectionTitle icon={<Receipt className="h-4 w-4" />} title="Factures" count={(facturesList ?? []).length} />
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mt-3">
@@ -520,7 +632,7 @@ export default async function ClientPortalPage({
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-900">{facture.title}</p>
                           <p className="text-xs text-gray-400 mt-0.5">
-                            {facture.number} · <strong>{formatMAD(facture.total_centimes)}</strong>
+                            {facture.number} · <strong>{money(facture.total_centimes)}</strong>
                             {facture.due_date && ` · échéance ${formatDate(facture.due_date)}`}
                           </p>
                           {facture.paid_at && <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Paiement reçu le {formatDate(facture.paid_at)}</p>}
@@ -559,7 +671,7 @@ export default async function ClientPortalPage({
         )}
 
         {/* Shared files */}
-        {filesWithUrls.length > 0 && (
+        {vis.documents && filesWithUrls.length > 0 && (
           <section id="fichiers">
             <SectionTitle icon={<FolderOpen className="h-4 w-4" />} title="Documents partagés" count={filesWithUrls.length} />
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mt-3">
@@ -617,7 +729,7 @@ export default async function ClientPortalPage({
         )}
 
         {/* Site visits + Meeting notes */}
-        {((siteVisits ?? []).length > 0 || (meetingNotes ?? []).length > 0) && (
+        {vis.chantier && ((siteVisits ?? []).length > 0 || (meetingNotes ?? []).length > 0) && (
           <section id="chantier">
             <SectionTitle icon={<Hammer className="h-4 w-4" />} title="Comptes-rendus & Visites" />
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mt-3">
@@ -704,16 +816,88 @@ export default async function ClientPortalPage({
           </section>
         )}
 
+        {/* Site issues / blockers */}
+        {vis.blocages && openIssues.length > 0 && (
+          <section id="blocages">
+            <SectionTitle icon={<AlertTriangle className="h-4 w-4" />} title="Chantier & blocages" count={openIssues.length} />
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mt-3">
+              <div className="divide-y divide-gray-50">
+                {openIssues.map((issue) => (
+                  <div key={issue.id} className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900">{issue.title}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {projectById[issue.project_id]?.title ?? ""}
+                          {issue.zone && ` · ${issue.zone}`}
+                          {issue.due_date && ` · échéance ${formatDate(issue.due_date)}`}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide ${
+                          issue.priority === "high" ? "bg-red-50 text-red-600"
+                            : issue.priority === "low" ? "bg-gray-100 text-gray-500"
+                            : "bg-amber-50 text-amber-600"
+                        }`}>
+                          {issue.priority === "high" ? "Haute" : issue.priority === "low" ? "Basse" : "Moyenne"}
+                        </span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide ${
+                          issue.status === "in_progress" ? "bg-blue-50 text-blue-600" : "bg-gray-100 text-gray-500"
+                        }`}>
+                          {issue.status === "in_progress" ? "En cours" : "Ouvert"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Time spent */}
+        {vis.temps && totalMinutes > 0 && (
+          <section id="temps">
+            <SectionTitle icon={<Timer className="h-4 w-4" />} title="Temps passé" />
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mt-3">
+              <div className="divide-y divide-gray-50">
+                {(projects ?? []).filter((p) => (minutesByProject.get(p.id) ?? 0) > 0).map((project) => (
+                  <div key={project.id} className="flex items-center justify-between gap-3 p-4">
+                    <p className="text-sm text-gray-700 min-w-0 truncate">{project.title}</p>
+                    <span className="text-sm font-semibold text-gray-900 shrink-0">{formatHours(minutesByProject.get(project.id) ?? 0)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between gap-3 px-4 py-3 bg-gray-50 border-t border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</p>
+                <span className="text-sm font-bold text-gray-900">{formatHours(totalMinutes)}</span>
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* Moodboards */}
-        {(moodboards ?? []).length > 0 && (
+        {vis.inspirations && signedMoodboards.length > 0 && (
           <section id="inspirations">
             <SectionTitle icon={<ImageIcon className="h-4 w-4" />} title="Inspiration" />
             <div className="space-y-3 mt-3">
-              {(moodboards ?? []).map((board) => {
+              {signedMoodboards.map((board) => {
                 const items = Array.isArray(board.items) ? board.items as { id: string; url: string; caption?: string }[] : [];
                 return (
                   <div key={board.id} className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-sm font-semibold text-gray-900 mb-1">{board.title}</p>
+                    <div className="flex items-start justify-between gap-3 mb-1">
+                      <p className="text-sm font-semibold text-gray-900">{board.title}</p>
+                      {items.length > 0 && (
+                        <a
+                          href={`/api/portal/client/${token}/moodboards/${board.id}/pdf`}
+                          download
+                          className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-900 border border-gray-200 rounded-lg px-2.5 py-1.5 transition-colors"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          PDF
+                        </a>
+                      )}
+                    </div>
                     {board.description && <p className="text-xs text-gray-400 mb-3">{board.description}</p>}
                     {items.length > 0 && (
                       <div className="columns-3 gap-2 space-y-2">
@@ -734,7 +918,7 @@ export default async function ClientPortalPage({
         )}
 
         {/* Activity timeline */}
-        {(activityLog ?? []).length > 0 && (
+        {vis.historique && (activityLog ?? []).length > 0 && (
           <section id="historique">
             <SectionTitle icon={<Activity className="h-4 w-4" />} title="Historique de collaboration" />
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mt-3">
@@ -765,6 +949,7 @@ export default async function ClientPortalPage({
         )}
 
         {/* Discussion */}
+        {vis.discussion && (
         <section id="discussion">
           <SectionTitle icon={<MessageCircle className="h-4 w-4" />} title="Discussion" />
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mt-3">
@@ -797,9 +982,10 @@ export default async function ClientPortalPage({
             </div>
           </div>
         </section>
+        )}
 
         {/* Contact */}
-        {(firmProfile?.phone || firmProfile?.email) && (
+        {vis.contact && (firmProfile?.phone || firmProfile?.email) && (
           <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Contacter votre architecte</p>
             <div className="flex flex-wrap gap-3">
@@ -819,6 +1005,39 @@ export default async function ClientPortalPage({
       </main>
     </div>
   );
+}
+
+function phaseChecklist(metadata: unknown, phase: string): { label: string; done: boolean }[] {
+  if (metadata && typeof metadata === "object" && "checklist" in metadata) {
+    const checklist = (metadata as { checklist?: Record<string, unknown> }).checklist;
+    const items = checklist?.[phase];
+    if (Array.isArray(items)) {
+      return items.filter(
+        (i): i is { label: string; done: boolean } =>
+          !!i && typeof i === "object" && "label" in i && "done" in i
+      );
+    }
+  }
+  return [];
+}
+
+function computeAdvancement(phase: string, metadata: unknown): { pct: number; done: number; total: number } {
+  const idx = PHASES.findIndex((p) => p.key === phase);
+  const items = phaseChecklist(metadata, phase);
+  const done = items.filter((i) => i.done).length;
+  const total = items.length;
+  const ratio = total > 0 ? done / total : 0;
+  const base = idx < 0 ? 0 : idx;
+  const pct = Math.round(Math.min(100, ((base + ratio) / (PHASES.length - 1)) * 100));
+  return { pct, done, total };
+}
+
+function formatHours(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h} h`;
+  return `${h} h ${m.toString().padStart(2, "0")}`;
 }
 
 function SectionTitle({ icon, title, count }: { icon: React.ReactNode; title: string; count?: number }) {
