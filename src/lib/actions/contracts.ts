@@ -4,13 +4,12 @@ import { createClient } from "@/lib/supabase/server";
 import { assertProjectMatchesClient, assertWorkspaceRecords, requireWorkspaceRole } from "@/lib/workspace";
 import { contractGenerateSchema, contractAiResponseSchema, type ContractAiResponse } from "@/lib/validators/contract";
 import { anthropic, AI_MODEL } from "@/lib/ai/anthropic";
-import { CONTRACT_SYSTEM_PROMPT } from "@/lib/ai/prompts/contract";
+import { getContractPrompt } from "@/lib/ai/prompts/contract";
+import { getWorkspaceLocalization } from "@/lib/localization";
 import { assertAiUsageAvailable, recordAiUsage } from "@/lib/ai/usage";
 import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
 import { dbError } from "@/lib/db-error";
-
-const CONTRACT_PROMPT_VERSION = "v1.1";
 
 /** Escape HTML special chars so AI-generated text can't inject markup into content_html. */
 function escapeHtml(value: string): string {
@@ -20,12 +19,12 @@ function escapeHtml(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
-async function collectStream(userPrompt: string): Promise<string> {
+async function collectStream(userPrompt: string, systemPrompt: string): Promise<string> {
   const message = await anthropic.messages.create({
     model: AI_MODEL,
     max_tokens: 8192,
     temperature: 0.4,
-    system: `${CONTRACT_SYSTEM_PROMPT}\n\nRenvoie uniquement du JSON strict sans markdown.`,
+    system: `${systemPrompt}\n\nRenvoie uniquement du JSON strict sans markdown.`,
     messages: [{ role: "user", content: userPrompt }],
   });
 
@@ -35,10 +34,10 @@ async function collectStream(userPrompt: string): Promise<string> {
     .join("\n");
 }
 
-async function callAI(userPrompt: string): Promise<Result<ContractAiResponse>> {
+async function callAI(userPrompt: string, systemPrompt: string): Promise<Result<ContractAiResponse>> {
   let rawText: string;
   try {
-    rawText = await collectStream(userPrompt);
+    rawText = await collectStream(userPrompt, systemPrompt);
   } catch (err) {
     return { ok: false, error: `Erreur API IA : ${err instanceof Error ? err.message : String(err)}` };
   }
@@ -64,7 +63,8 @@ async function callAI(userPrompt: string): Promise<Result<ContractAiResponse>> {
     try {
       retryRaw = await collectStream(
         userPrompt +
-          '\n\nIMPORTANT: Renvoie UNIQUEMENT du JSON strict sans aucun texte autour. Format exact: { "title": "...", "sections": [{ "heading": "...", "body": "..." }] }'
+          '\n\nIMPORTANT: Renvoie UNIQUEMENT du JSON strict sans aucun texte autour. Format exact: { "title": "...", "sections": [{ "heading": "...", "body": "..." }] }',
+        systemPrompt
       );
     } catch {
       return { ok: false, error: "Échec de la génération. Veuillez réessayer." };
@@ -112,7 +112,8 @@ export async function generateContractAction(
   const quota = await assertAiUsageAvailable(supabase, workspaceId);
   if (!quota.ok) return quota;
 
-  const [clientRes, projectRes, firmRes] = await Promise.all([
+  const [localization, clientRes, projectRes, firmRes] = await Promise.all([
+    getWorkspaceLocalization(supabase, workspaceId),
     supabase.from("clients").select("name, type, address, ice, cin").eq("id", parsed.data.clientId).eq("workspace_id", workspaceId).single(),
     parsed.data.projectId
       ? supabase.from("projects").select("title, type, address, surface_m2").eq("id", parsed.data.projectId).eq("workspace_id", workspaceId).single()
@@ -120,26 +121,45 @@ export async function generateContractAction(
     supabase.from("firm_profile").select("firm_name, architect_name, address, ice, rc").eq("workspace_id", workspaceId).single(),
   ]);
 
-  const userPrompt = JSON.stringify({
-    type_contrat: parsed.data.type,
-    client: clientRes.data,
-    projet: projectRes.data,
-    architecte: firmRes.data,
-    perimetre_mission: parsed.data.missionScope,
-    honoraires_mad_ht: parsed.data.feesMad,
-    modalites_paiement: parsed.data.paymentSchedule,
-    delais: parsed.data.deadlines,
-    clauses_particulieres: parsed.data.specialClauses,
-  });
+  const promptConfig = getContractPrompt(localization);
 
-  const aiResult = await callAI(userPrompt);
+  // MA keeps its exact historical userPrompt shape (flagship, byte-stable output);
+  // other jurisdictions get a currency/tax-aware, jurisdiction-neutral input.
+  const userPrompt = localization.country === "MA"
+    ? JSON.stringify({
+        type_contrat: parsed.data.type,
+        client: clientRes.data,
+        projet: projectRes.data,
+        architecte: firmRes.data,
+        perimetre_mission: parsed.data.missionScope,
+        honoraires_mad_ht: parsed.data.feesMad,
+        modalites_paiement: parsed.data.paymentSchedule,
+        delais: parsed.data.deadlines,
+        clauses_particulieres: parsed.data.specialClauses,
+      })
+    : JSON.stringify({
+        type_contrat: parsed.data.type,
+        client: clientRes.data,
+        projet: projectRes.data,
+        architecte: firmRes.data,
+        perimetre_mission: parsed.data.missionScope,
+        honoraires_ht: parsed.data.feesMad,
+        devise: localization.currency,
+        libelle_taxe: localization.taxLabel,
+        modalites_paiement: parsed.data.paymentSchedule,
+        delais: parsed.data.deadlines,
+        clauses_particulieres: parsed.data.specialClauses,
+      });
+
+  const aiResult = await callAI(userPrompt, promptConfig.system);
   if (!aiResult.ok) return aiResult;
   await recordAiUsage(supabase, workspaceId, {
     feature: "contract_generation",
     provider: "anthropic",
     model: AI_MODEL,
     metadata: {
-      promptVersion: CONTRACT_PROMPT_VERSION,
+      promptVersion: promptConfig.version,
+      country: localization.country,
       clientId: parsed.data.clientId,
       projectId: parsed.data.projectId ?? null,
     },
@@ -162,7 +182,8 @@ export async function generateContractAction(
       content_html: contentHtml,
       ai_prompt: userPrompt,
       ai_response_raw: JSON.stringify(contractData),
-      ai_model: `${AI_MODEL}@${CONTRACT_PROMPT_VERSION}`,
+      ai_model: `${AI_MODEL}@${promptConfig.version}`,
+      metadata: { ai_country: localization.country, ai_jurisdiction: promptConfig.jurisdiction, ai_prompt_version: promptConfig.version },
       status: "brouillon",
       version: 1,
     })

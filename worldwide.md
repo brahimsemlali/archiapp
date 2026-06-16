@@ -154,11 +154,26 @@ behavior (zero user-visible change for existing workspaces).
 - [x] 5 unit tests (`country-packs.test.ts`): prefixes per pack, identity lines drop empties + no
       invented fields + MA fallback. 49 tests / tc 0 / lint 0 / build OK.
 
-### W6 — Contract AI per jurisdiction (the meta-moat)
-- [ ] Prompt registry per country pack (`src/lib/ai/prompts/`): Morocco = Loi 016-89 (exists);
-      each pack carries its own lawyer-reviewed grounding + disclaimer
-- [ ] Hard rule kept: never invent legal articles; store `ai_prompt_version` + country
-- [ ] Fallback: "international" pack with jurisdiction-neutral contract + strong disclaimer
+### W6 — Contract AI per jurisdiction (the meta-moat) ← **DONE 2026-06-16 (mechanism; per-market grounding juriste-gated)**
+- [x] `getContractPrompt(localization)` registry in `src/lib/ai/prompts/contract.ts`. Morocco
+      returns the existing Loi 016-89 prompt **byte-identically** + version "v1.1" (flagship, only
+      real users — its prompt string AND userPrompt JSON are untouched; unit-test guards the byte-identity).
+- [x] Fallback: `internationalContractSystemPrompt({taxLabel,currency})` — jurisdiction-NEUTRAL,
+      currency/tax-aware. It **actively forbids** citing any law/code/article/decree/professional body
+      (a capable model on FR/UAE data would otherwise cite real, unvetted law — the failure mode isn't
+      "invents law", it's "cites real law no juriste vetted") and forces `[À COMPLÉTER : droit applicable]`
+      placeholders. Used for every non-MA country.
+- [x] Strong disclaimer lives **in the contract body as a section** ("Avertissement" — AI-generated,
+      not jurisdiction-grounded, review by local counsel) so it survives PDF export + e-signature, not
+      just UI chrome.
+- [x] Stores `ai_model: …@{version}` (MA "v1.1" unchanged) + `contracts.metadata.{ai_country,
+      ai_jurisdiction,ai_prompt_version}` + country in the AI-usage log. Hard "never invent articles" rule kept.
+- [x] 4 unit tests (`contract.test.ts`): MA byte-identity, non-MA→neutral, neutral has no "016-89"/
+      "Ordre National" + has placeholders/review/Avertissement, neutral reflects currency+tax not "TVA 20%".
+      53 tests / tc 0 / lint 0 / build OK.
+- [ ] **Per-market grounding (DZ/TN/FR/Gulf) = DEFERRED to a juriste** — same gate as the legal pages
+      + W5 legal mentions. The mechanism is live; add a real grounded prompt per country when vetted.
+      Multilingual contract bodies (currently FR-only) also future.
 
 ### W7 — Country pack #2 & #3: Algeria / Tunisia (francophone corridor)
 - [ ] DZD / TND packs (currency, TVA 19%, timezone, numbering)
@@ -203,6 +218,8 @@ behavior (zero user-visible change for existing workspaces).
 *Created 2026-06-12. Status: W1 DONE (migration applied 2026-06-15). W2 DONE 2026-06-15
 (locale + timezone aware dates). W3 DONE 2026-06-15 (phase/status/deliverable labels →
 i18n; RIBA/AIA nomenclature deferred with rationale). W4 DONE 2026-06-15 (tax label pack-driven).
-W5 DONE 2026-06-16 (numbering prefix + PDF firm-identity block per pack; MA invoices now print
-ICE/RC/IF/Patente; legal mentions deferred — juriste; 49 tests / tc 0 / lint 0 / build OK).
-Next: W6 (contract AI per jurisdiction — the meta-moat; needs per-market legal grounding/juriste).*
+W5 DONE 2026-06-16 (numbering prefix + PDF firm-identity per pack). W6 DONE 2026-06-16 (contract-AI
+jurisdiction mechanism: MA byte-identical Loi 016-89; neutral fallback that actively forbids statute
+citation + in-body disclaimer; per-market grounding juriste-gated; 53 tests / tc 0 / lint 0 / build OK).
+Next: W7 (Algeria/Tunisia packs) and W8/W9 — but these need real legal/GTM input. **Engineering
+foundation W1–W6 complete; remaining worldwide work is juriste/market-gated, not code.**
