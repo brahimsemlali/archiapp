@@ -136,10 +136,23 @@ behavior (zero user-visible change for existing workspaces).
       → full rapports i18n is separate debt. Also later: multiple rates per line item; reverse-charge /
       export-exempt flags; UI-locale translation of the tax label if ever wanted (deliberately not done).
 
-### W5 — Documents & numbering per country
-- [ ] Invoice numbering pattern from pack (`FA-YYYY-NNN` stays MA default); keep legal sequentiality
-- [ ] PDF templates: firm-identity block driven by pack field list (ICE/RC/… vs SIRET vs TRN…)
-- [ ] Legal mentions on devis/factures per pack
+### W5 — Documents & numbering per country ← **DONE 2026-06-16**
+- [x] Numbering prefix from pack: `invoicePrefix`/`quotePrefix` on CountryPack. Francophone
+      (MA/DZ/TN/FR) keep **FA/DEV** (DEV, not DV — matched the existing series exactly); AE/SA/INTL
+      use INV/QUO. `nextFactureNumber`/`nextDevisNumber` resolve the prefix via
+      `getWorkspaceLocalization` → `getCountryPack`. **Legal sequentiality untouched**: the DB RPC
+      `next_workspace_document_number` keys the counter on `document_type`, so the prefix is purely
+      presentational (verified against the live RPC def).
+- [x] PDF firm-identity block driven by pack: `firmIdentityFields` + `getFirmIdentityLines(firmRow)`.
+      **MA enriched** to print ICE/RC/IF/Patente (was ICE-only — a real Moroccan-compliance gap),
+      empties dropped. Packs without backing columns (DZ/TN/FR/AE/SA/INTL) yield no lines — **no
+      invented SIRET/TRN** (same deferral discipline as W3 RIBA). Labels are jurisdiction terms,
+      NOT locale-translated. Wired through both PDF templates + all 5 render paths; snapshot select
+      now captures `country` so a sent invoice renders its own frozen identity.
+- [~] Legal mentions per pack — **DEFERRED** (juriste-dependent, like W6 + the legal pages). No
+      hook shipped; would be empty for every pack today. Add `invoiceLegalNote` when real text exists.
+- [x] 5 unit tests (`country-packs.test.ts`): prefixes per pack, identity lines drop empties + no
+      invented fields + MA fallback. 49 tests / tc 0 / lint 0 / build OK.
 
 ### W6 — Contract AI per jurisdiction (the meta-moat)
 - [ ] Prompt registry per country pack (`src/lib/ai/prompts/`): Morocco = Loi 016-89 (exists);
@@ -189,7 +202,7 @@ behavior (zero user-visible change for existing workspaces).
 
 *Created 2026-06-12. Status: W1 DONE (migration applied 2026-06-15). W2 DONE 2026-06-15
 (locale + timezone aware dates). W3 DONE 2026-06-15 (phase/status/deliverable labels →
-i18n; RIBA/AIA nomenclature deferred with rationale). W4 DONE 2026-06-15 (tax label pack-driven
-across UI + 5 PDF paths; misleading "(20%)" removed; computation already per-doc-correct;
-44 tests / tc 0 / lint 0 / build OK). Next: W5 (documents & numbering per country — invoice
-numbering pattern, firm-identity block per pack, legal mentions).*
+i18n; RIBA/AIA nomenclature deferred with rationale). W4 DONE 2026-06-15 (tax label pack-driven).
+W5 DONE 2026-06-16 (numbering prefix + PDF firm-identity block per pack; MA invoices now print
+ICE/RC/IF/Patente; legal mentions deferred — juriste; 49 tests / tc 0 / lint 0 / build OK).
+Next: W6 (contract AI per jurisdiction — the meta-moat; needs per-market legal grounding/juriste).*

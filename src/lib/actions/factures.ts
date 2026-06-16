@@ -8,16 +8,19 @@ import { factureFormSchema, type FactureFormValues } from "@/lib/validators/fact
 import { sendEmail } from "@/lib/email/send";
 import { factureSentEmail, APP_URL } from "@/lib/email/templates";
 import { formatMoney, formatDate } from "@/lib/format";
-import { resolveLocalization } from "@/lib/country-packs";
+import { resolveLocalization, getCountryPack } from "@/lib/country-packs";
+import { getWorkspaceLocalization } from "@/lib/localization";
 import { computeDocumentTotals } from "@/lib/totals";
 import { dbError } from "@/lib/db-error";
 
 
 async function nextFactureNumber(supabase: Awaited<ReturnType<typeof createClient>>, workspaceId: string): Promise<string> {
+  const localization = await getWorkspaceLocalization(supabase, workspaceId);
+  const prefix = getCountryPack(localization.country).invoicePrefix;
   const { data, error } = await supabase.rpc("next_workspace_document_number", {
     p_workspace_id: workspaceId,
     p_document_type: "facture",
-    p_prefix: "FA",
+    p_prefix: prefix,
   });
 
   if (error || typeof data !== "string") {
@@ -54,7 +57,7 @@ async function createSentInvoiceSnapshot(
       .single(),
     supabase
       .from("firm_profile")
-      .select("firm_name, architect_name, address, phone, email, ice, rc, if_number, cnss, patente, iban, logo_url")
+      .select("firm_name, architect_name, address, phone, email, ice, rc, if_number, cnss, patente, iban, logo_url, country")
       .eq("workspace_id", workspaceId)
       .maybeSingle(),
   ]);

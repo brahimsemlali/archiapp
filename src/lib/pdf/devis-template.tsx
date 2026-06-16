@@ -50,9 +50,10 @@ interface DevisTemplateProps {
   firm: { firm_name?: string | null; architect_name?: string | null; address?: string | null; phone?: string | null; email?: string | null; ice?: string | null; logo_url?: string | null } | null;
   currency?: string;
   taxLabel?: string;
+  firmIdentity?: { label: string; value: string }[];
 }
 
-export function DevisPdf({ devis, client, project, firm, currency = "MAD", taxLabel = "TVA" }: DevisTemplateProps) {
+export function DevisPdf({ devis, client, project, firm, currency = "MAD", taxLabel = "TVA", firmIdentity = [] }: DevisTemplateProps) {
   const money = (centimes: number) => formatMoney(centimes, currency);
   return (
     <Document>
@@ -65,7 +66,9 @@ export function DevisPdf({ devis, client, project, firm, currency = "MAD", taxLa
             <Text style={styles.firmName}>{firm?.firm_name ?? "Cabinet d'architecture"}</Text>
             {firm?.architect_name && <Text style={styles.firmDetails}>{firm.architect_name}</Text>}
             {firm?.address && <Text style={styles.firmDetails}>{firm.address}</Text>}
-            {firm?.ice && <Text style={styles.firmDetails}>ICE : {firm.ice}</Text>}
+            {firmIdentity.map((line) => (
+              <Text key={line.label} style={styles.firmDetails}>{line.label} : {line.value}</Text>
+            ))}
             {firm?.phone && <Text style={styles.firmDetails}>{firm.phone}</Text>}
             {firm?.email && <Text style={styles.firmDetails}>{firm.email}</Text>}
           </View>

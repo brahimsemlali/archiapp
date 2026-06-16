@@ -10,6 +10,15 @@
 
 export type AppLocale = "fr" | "en" | "ar";
 
+/** A firm-identity line on documents: which firm_profile column to print + its
+ *  label. Labels are jurisdiction terms (NOT locale-translated — "ICE" stays
+ *  "ICE" in en/ar UI), same principle as taxLabel. Only packs whose identity
+ *  columns actually exist get a non-empty list (see firmIdentityFields below). */
+export interface FirmIdentityField {
+  key: string;
+  label: string;
+}
+
 export interface CountryPack {
   /** ISO 3166-1 alpha-2 */
   code: string;
@@ -23,7 +32,25 @@ export interface CountryPack {
   /** IANA timezone */
   timezone: string;
   defaultLocale: AppLocale;
+  /** Document number prefixes: {prefix}-{YYYY}-{NNN}. The DB counter keys on
+   *  document_type, so the prefix is presentational and safe to vary per pack. */
+  invoicePrefix: string;
+  quotePrefix: string;
+  /** Firm legal-ID lines printed on devis/factures. Empty for packs whose
+   *  identity columns don't exist yet — we don't invent SIRET/TRN fields with
+   *  no backing column (deferred until those markets + columns land). */
+  firmIdentityFields: readonly FirmIdentityField[];
 }
+
+// Moroccan legal identifiers — the only identity columns that exist on
+// firm_profile today (ice/rc/if_number/patente). CNSS is payroll, omitted from
+// commercial documents.
+const MA_IDENTITY: FirmIdentityField[] = [
+  { key: "ice", label: "ICE" },
+  { key: "rc", label: "RC" },
+  { key: "if_number", label: "IF" },
+  { key: "patente", label: "Patente" },
+];
 
 export const COUNTRY_PACKS = {
   MA: {
@@ -34,6 +61,9 @@ export const COUNTRY_PACKS = {
     defaultTaxRate: 20,
     timezone: "Africa/Casablanca",
     defaultLocale: "fr",
+    invoicePrefix: "FA",
+    quotePrefix: "DEV",
+    firmIdentityFields: MA_IDENTITY,
   },
   DZ: {
     code: "DZ",
@@ -43,6 +73,9 @@ export const COUNTRY_PACKS = {
     defaultTaxRate: 19,
     timezone: "Africa/Algiers",
     defaultLocale: "fr",
+    invoicePrefix: "FA",
+    quotePrefix: "DEV",
+    firmIdentityFields: [],
   },
   TN: {
     code: "TN",
@@ -52,6 +85,9 @@ export const COUNTRY_PACKS = {
     defaultTaxRate: 19,
     timezone: "Africa/Tunis",
     defaultLocale: "fr",
+    invoicePrefix: "FA",
+    quotePrefix: "DEV",
+    firmIdentityFields: [],
   },
   FR: {
     code: "FR",
@@ -61,6 +97,9 @@ export const COUNTRY_PACKS = {
     defaultTaxRate: 20,
     timezone: "Europe/Paris",
     defaultLocale: "fr",
+    invoicePrefix: "FA",
+    quotePrefix: "DEV",
+    firmIdentityFields: [],
   },
   AE: {
     code: "AE",
@@ -70,6 +109,9 @@ export const COUNTRY_PACKS = {
     defaultTaxRate: 5,
     timezone: "Asia/Dubai",
     defaultLocale: "en",
+    invoicePrefix: "INV",
+    quotePrefix: "QUO",
+    firmIdentityFields: [],
   },
   SA: {
     code: "SA",
@@ -79,6 +121,9 @@ export const COUNTRY_PACKS = {
     defaultTaxRate: 15,
     timezone: "Asia/Riyadh",
     defaultLocale: "ar",
+    invoicePrefix: "INV",
+    quotePrefix: "QUO",
+    firmIdentityFields: [],
   },
   INTL: {
     code: "INTL",
@@ -88,6 +133,9 @@ export const COUNTRY_PACKS = {
     defaultTaxRate: 0,
     timezone: "UTC",
     defaultLocale: "en",
+    invoicePrefix: "INV",
+    quotePrefix: "QUO",
+    firmIdentityFields: [],
   },
 } as const satisfies Record<string, CountryPack>;
 
@@ -133,6 +181,23 @@ export interface WorkspaceLocalization {
   timezone: string;
   defaultTaxRate: number;
   taxLabel: string;
+}
+
+/**
+ * Firm legal-ID lines to print on documents, resolved from the firm's country
+ * pack mapped over its firm_profile row. Empty values are dropped, so a firm
+ * that hasn't filled (say) its Patente simply won't show that line. Pass the
+ * SAME firm row you resolve currency/tax from (live row, or a frozen snapshot
+ * row for sent invoices) so the document renders its own identity.
+ */
+export function getFirmIdentityLines(
+  firmProfile: Record<string, unknown> | null | undefined
+): Array<{ label: string; value: string }> {
+  if (!firmProfile) return [];
+  const pack = getCountryPack(typeof firmProfile.country === "string" ? firmProfile.country : null);
+  return pack.firmIdentityFields
+    .map((field) => ({ label: field.label, value: String(firmProfile[field.key] ?? "").trim() }))
+    .filter((line) => line.value.length > 0);
 }
 
 export function resolveLocalization(firmProfile: object | null | undefined): WorkspaceLocalization {

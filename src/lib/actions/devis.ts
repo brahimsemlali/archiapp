@@ -8,15 +8,18 @@ import { devisFormSchema, type DevisFormValues } from "@/lib/validators/devis";
 import { sendEmail } from "@/lib/email/send";
 import { devisSentEmail, APP_URL } from "@/lib/email/templates";
 import { formatMoney, formatDate } from "@/lib/format";
-import { resolveLocalization } from "@/lib/country-packs";
+import { resolveLocalization, getCountryPack } from "@/lib/country-packs";
+import { getWorkspaceLocalization } from "@/lib/localization";
 import { dbError } from "@/lib/db-error";
 
 
 async function nextDevisNumber(supabase: Awaited<ReturnType<typeof createClient>>, workspaceId: string): Promise<string> {
+  const localization = await getWorkspaceLocalization(supabase, workspaceId);
+  const prefix = getCountryPack(localization.country).quotePrefix;
   const { data, error } = await supabase.rpc("next_workspace_document_number", {
     p_workspace_id: workspaceId,
     p_document_type: "devis",
-    p_prefix: "DEV",
+    p_prefix: prefix,
   });
 
   if (error || typeof data !== "string") {
