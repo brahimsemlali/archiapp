@@ -9,7 +9,7 @@ import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
 import type { InspirationItem } from "@/components/projects/inspiration-board";
 import { assertProjectAvailable, assertStorageAvailable } from "@/lib/billing/guards";
-import { validateImageUpload } from "@/lib/storage/upload-validation";
+import { validateImageUpload, type UploadFileMeta } from "@/lib/storage/upload-validation";
 import { dbError } from "@/lib/db-error";
 
 interface PhaseBudgetInput {
@@ -237,10 +237,11 @@ export async function updateProjectPhaseBudgetsAction(
 
 // ─── Inspiration board ────────────────────────────────────────────────────────
 
-export async function addInspirationAction(
+/** Step 1: signed-URL ticket for a direct-to-storage project inspiration image. */
+export async function createInspirationUploadUrlAction(
   projectId: string,
-  formData: FormData
-): Promise<Result<InspirationItem>> {
+  meta: UploadFileMeta
+): Promise<Result<{ bucket: string; path: string; token: string; contentType: string }>> {
   const supabase = await createClient();
   const context = await requireWorkspaceRole(supabase);
   if (!context.ok) return { ok: false, error: context.error };
@@ -248,31 +249,38 @@ export async function addInspirationAction(
   const projectCheck = await assertWorkspaceRecord(supabase, "projects", projectId, workspaceId, "Projet");
   if (!projectCheck.ok) return projectCheck;
 
-  const file = formData.get("image") as File | null;
-  if (!file) return { ok: false, error: "Aucune image." };
-  const fileValidation = validateImageUpload(file, 10 * 1024 * 1024);
+  const fileValidation = validateImageUpload(meta, 10 * 1024 * 1024);
   if (!fileValidation.ok) return fileValidation;
-  const storageCheck = await assertStorageAvailable(supabase, workspaceId, file.size);
+  const storageCheck = await assertStorageAvailable(supabase, workspaceId, meta.size);
   if (!storageCheck.ok) return storageCheck;
 
-  const caption = (formData.get("caption") as string | null) ?? undefined;
-  const sourceInput = (formData.get("source") as string | null) ?? undefined;
-  const source = normalizeExternalUrl(sourceInput);
-  if (sourceInput?.trim() && !source) return { ok: false, error: "URL source invalide." };
-
   const path = `${workspaceId}/${projectId}/inspirations/${Date.now()}.${fileValidation.data.extension}`;
-  const buffer = await file.arrayBuffer();
+  const { data: signed, error } = await supabase.storage.from("project-files").createSignedUploadUrl(path);
+  if (error || !signed) return { ok: false, error: error?.message ?? "Impossible de préparer l'envoi." };
 
-  const { error: uploadError } = await supabase.storage
-    .from("project-files")
-    .upload(path, buffer, { contentType: fileValidation.data.contentType, upsert: false });
+  return { ok: true, data: { bucket: "project-files", path: signed.path, token: signed.token, contentType: fileValidation.data.contentType } };
+}
 
-  if (uploadError) return { ok: false, error: uploadError.message };
+/** Step 2: append the uploaded inspiration image to the project metadata. */
+export async function finalizeInspirationAction(
+  projectId: string,
+  input: { path: string; caption?: string; source?: string }
+): Promise<Result<InspirationItem>> {
+  const supabase = await createClient();
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
+
+  if (!input.path.startsWith(`${workspaceId}/${projectId}/inspirations/`)) {
+    return { ok: false, error: "Chemin de stockage invalide." };
+  }
+
+  const source = normalizeExternalUrl(input.source);
+  if (input.source?.trim() && !source) return { ok: false, error: "URL source invalide." };
 
   const { data: signedUrlData, error: signedUrlError } = await supabase.storage
     .from("project-files")
-    .createSignedUrl(path, 60 * 60);
-
+    .createSignedUrl(input.path, 60 * 60);
   if (signedUrlError || !signedUrlData?.signedUrl) {
     return { ok: false, error: "Image envoyée, mais l'aperçu n'a pas pu être généré." };
   }
@@ -283,7 +291,6 @@ export async function addInspirationAction(
     .eq("id", projectId)
     .eq("workspace_id", workspaceId)
     .single();
-
   if (!project) return { ok: false, error: "Projet introuvable." };
 
   const metadata = (project.metadata as Record<string, unknown>) ?? {};
@@ -291,8 +298,8 @@ export async function addInspirationAction(
   const newItem: InspirationItem = {
     id: crypto.randomUUID(),
     url: signedUrlData.signedUrl,
-    path,
-    caption: caption || undefined,
+    path: input.path,
+    caption: input.caption?.trim() || undefined,
     source: source || undefined,
     uploadedAt: new Date().toISOString(),
   };

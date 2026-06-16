@@ -13,6 +13,15 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  experimental: {
+    // Server Actions default to a 1 MB body — far below the 2–100 MB the upload
+    // validators allow, so every real photo/file upload failed. Raise to cover
+    // photos + typical documents. NOTE: Vercel serverless caps request bodies at
+    // ~4.5 MB in production — large uploads there need direct-to-storage signed URLs.
+    serverActions: {
+      bodySizeLimit: "25mb",
+    },
+  },
 };
 
 // Sentry build-time config. Source-map upload only runs when SENTRY_AUTH_TOKEN +

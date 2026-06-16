@@ -6,18 +6,35 @@ import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
 import crypto from "crypto";
 import { assertStorageAvailable } from "@/lib/billing/guards";
-import { buildSafeStorageFilename, sanitizeStorageSegment, validateDocumentUpload } from "@/lib/storage/upload-validation";
+import { buildSafeStorageFilename, sanitizeStorageSegment, validateDocumentUpload, type UploadFileMeta } from "@/lib/storage/upload-validation";
 import { dbError } from "@/lib/db-error";
 
 const STORAGE_BUCKET = "project-files";
 const APPROVAL_STATUSES = ["not_required", "pending", "approved", "rejected"] as const;
 type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 
-export async function uploadFileAction(
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
+export interface FileUploadTicket {
+  bucket: string;
+  storagePath: string;
+  token: string;
+  contentType: string;
+  version: number;
+  parentFileId: string | null;
+}
+
+/**
+ * Step 1 of a direct-to-storage upload. Validates metadata + plan storage,
+ * computes the version chain, and returns a signed upload URL so the browser
+ * can PUT the bytes straight to Storage — bypassing the Vercel ~4.5 MB
+ * server-action body cap that silently broke large plan/render/photo uploads.
+ */
+export async function createFileUploadUrlAction(
   projectId: string,
   folder: string,
-  formData: FormData
-): Promise<Result<{ id: string; filename: string }>> {
+  meta: UploadFileMeta
+): Promise<Result<FileUploadTicket>> {
   const supabase = await createClient();
   const context = await requireWorkspaceRole(supabase);
   if (!context.ok) return { ok: false, error: context.error };
@@ -25,22 +42,19 @@ export async function uploadFileAction(
   const projectCheck = await assertWorkspaceRecord(supabase, "projects", projectId, workspaceId, "Projet");
   if (!projectCheck.ok) return projectCheck;
 
-  const file = formData.get("file") as File | null;
-  if (!file) return { ok: false, error: "Aucun fichier fourni." };
-
-  const fileValidation = validateDocumentUpload(file, 100 * 1024 * 1024);
+  const fileValidation = validateDocumentUpload(meta, MAX_UPLOAD_BYTES);
   if (!fileValidation.ok) return fileValidation;
-  const storageCheck = await assertStorageAvailable(supabase, workspaceId, file.size);
+  const storageCheck = await assertStorageAvailable(supabase, workspaceId, meta.size);
   if (!storageCheck.ok) return storageCheck;
 
-  // Check for existing file with same name in same folder → versioning
+  // Existing file with same name in same folder → next version
   const { data: existing } = await supabase
     .from("files")
     .select("id, version")
     .eq("workspace_id", workspaceId)
     .eq("project_id", projectId)
     .eq("folder", folder)
-    .eq("filename", file.name)
+    .eq("filename", meta.name)
     .is("parent_file_id", null)
     .order("version", { ascending: false })
     .limit(1);
@@ -49,53 +63,100 @@ export async function uploadFileAction(
   const newVersion = latestExisting ? latestExisting.version + 1 : 1;
 
   const safeFolder = sanitizeStorageSegment(folder, "Documents");
-  const safeName = buildSafeStorageFilename(file.name, fileValidation.data.extension);
+  const safeName = buildSafeStorageFilename(meta.name, fileValidation.data.extension);
   const storagePath = `${workspaceId}/${projectId}/${safeFolder}/${Date.now()}_${safeName}`;
 
-  const arrayBuffer = await file.arrayBuffer();
-  const { error: uploadError } = await supabase.storage
+  const { data: signed, error: signError } = await supabase.storage
     .from(STORAGE_BUCKET)
-    .upload(storagePath, arrayBuffer, {
+    .createSignedUploadUrl(storagePath);
+
+  if (signError || !signed) return { ok: false, error: signError?.message ?? "Impossible de préparer l'envoi." };
+
+  return {
+    ok: true,
+    data: {
+      bucket: STORAGE_BUCKET,
+      storagePath: signed.path,
+      token: signed.token,
       contentType: fileValidation.data.contentType,
-      upsert: false,
-    });
+      version: newVersion,
+      parentFileId: latestExisting?.id ?? null,
+    },
+  };
+}
 
-  if (uploadError) return { ok: false, error: uploadError.message };
+/**
+ * Step 2: record the file row after the browser has uploaded the bytes to the
+ * signed path. Re-validates ownership and re-derives the version chain so a
+ * stale/forged ticket can't corrupt versioning.
+ */
+export async function finalizeFileUploadAction(input: {
+  projectId: string;
+  folder: string;
+  filename: string;
+  storagePath: string;
+  sizeBytes: number;
+  contentType: string;
+}): Promise<Result<{ id: string; filename: string }>> {
+  const supabase = await createClient();
+  const context = await requireWorkspaceRole(supabase);
+  if (!context.ok) return { ok: false, error: context.error };
+  const { workspaceId } = context.data;
+  const projectCheck = await assertWorkspaceRecord(supabase, "projects", input.projectId, workspaceId, "Projet");
+  if (!projectCheck.ok) return projectCheck;
 
-  const { data: fileRow, error: dbError } = await supabase
+  // The uploaded object must live under this workspace's prefix.
+  if (!input.storagePath.startsWith(`${workspaceId}/${input.projectId}/`)) {
+    return { ok: false, error: "Chemin de stockage invalide." };
+  }
+
+  const { data: existing } = await supabase
+    .from("files")
+    .select("id, version")
+    .eq("workspace_id", workspaceId)
+    .eq("project_id", input.projectId)
+    .eq("folder", input.folder)
+    .eq("filename", input.filename)
+    .is("parent_file_id", null)
+    .order("version", { ascending: false })
+    .limit(1);
+  const latestExisting = existing?.[0];
+  const newVersion = latestExisting ? latestExisting.version + 1 : 1;
+
+  const { data: fileRow, error: insertError } = await supabase
     .from("files")
     .insert({
       workspace_id: workspaceId,
-      project_id: projectId,
-      folder,
-      filename: file.name,
-      storage_path: storagePath,
-      size_bytes: file.size,
-      mime_type: fileValidation.data.contentType,
+      project_id: input.projectId,
+      folder: input.folder,
+      filename: input.filename,
+      storage_path: input.storagePath,
+      size_bytes: input.sizeBytes,
+      mime_type: input.contentType,
       version: newVersion,
       parent_file_id: latestExisting?.id ?? null,
     })
     .select("id")
     .single();
 
-  if (dbError) return { ok: false, error: dbError.message };
+  if (insertError) return { ok: false, error: insertError.message };
 
   await Promise.all([
     supabase.from("activity_log").insert({
       workspace_id: workspaceId,
-      project_id: projectId,
+      project_id: input.projectId,
       action: "file.uploaded",
-      metadata: { filename: file.name, folder, version: newVersion },
+      metadata: { filename: input.filename, folder: input.folder, version: newVersion },
     }),
     supabase
       .from("projects")
       .update({ updated_at: new Date().toISOString() })
-      .eq("id", projectId)
+      .eq("id", input.projectId)
       .eq("workspace_id", workspaceId),
   ]);
 
-  revalidatePath(`/projects/${projectId}/files`);
-  return { ok: true, data: { id: fileRow.id, filename: file.name } };
+  revalidatePath(`/projects/${input.projectId}/files`);
+  return { ok: true, data: { id: fileRow.id, filename: input.filename } };
 }
 
 export async function getFileDownloadUrl(fileId: string): Promise<Result<string>> {

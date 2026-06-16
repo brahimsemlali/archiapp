@@ -8,10 +8,12 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { displayExternalUrl, normalizeExternalUrl } from "@/lib/url";
 import {
-  addMoodboardImageAction,
+  createMoodboardImageUploadUrlAction,
+  finalizeMoodboardImageAction,
   addMoodboardLinkAction,
   removeMoodboardImageAction,
 } from "@/lib/actions/moodboards";
+import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { InspirationItem } from "@/components/projects/inspiration-board";
 import { IMAGE_UPLOAD_ACCEPT, isAllowedImageFile } from "@/lib/upload-rules";
 
@@ -42,12 +44,16 @@ export function MoodboardBoard({ moodboardId, initialItems }: MoodboardBoardProp
     if (file.size > 10 * 1024 * 1024) { toast.error("Image trop lourde (max 10 Mo)."); return; }
 
     setUploading(true);
-    const formData = new FormData();
-    formData.append("image", file);
-    formData.append("caption", caption);
-    formData.append("source", sourceUrl);
+    // Direct-to-storage signed upload (bypasses the Vercel server-action body cap)
+    const ticket = await createMoodboardImageUploadUrlAction(moodboardId, { name: file.name, type: file.type, size: file.size });
+    if (!ticket.ok) { setUploading(false); toast.error(ticket.error); return; }
+    const supabase = createSupabaseBrowserClient();
+    const { error: uploadError } = await supabase.storage
+      .from(ticket.data.bucket)
+      .uploadToSignedUrl(ticket.data.path, ticket.data.token, file, { contentType: ticket.data.contentType });
+    if (uploadError) { setUploading(false); toast.error(uploadError.message); return; }
 
-    const result = await addMoodboardImageAction(moodboardId, formData);
+    const result = await finalizeMoodboardImageAction(moodboardId, { path: ticket.data.path, caption, source: sourceUrl });
     setUploading(false);
 
     if (!result.ok) { toast.error(result.error); return; }

@@ -280,44 +280,67 @@ export async function createPortalMessageAction(
   return { ok: true, data: undefined };
 }
 
-export async function uploadPortalDocumentAction(
+/**
+ * Step 1: signed-URL ticket for a client portal document upload. The public
+ * portal PUTs the bytes straight to Storage (signed token, no auth) — bypassing
+ * the Vercel ~4.5 MB server-action body cap that broke real client documents.
+ * Rate-limited and share-link-scoped; the URL is the gated step.
+ */
+export async function createPortalDocumentUploadUrlAction(
   token: string,
-  formData: FormData
-): Promise<Result<void>> {
+  meta: { name: string; type: string; size: number }
+): Promise<Result<{ bucket: string; path: string; uploadToken: string; contentType: string }>> {
   const { supabase, shareLink, error: linkError } = await getValidProjectShareLink(token);
   if (!shareLink) return { ok: false, error: linkError ?? "Lien invalide." };
   const rateLimit = await assertPortalRateLimit(supabase, shareLink, "portal.document_uploaded", 10, 10 * 60);
   if (!rateLimit.ok) return rateLimit;
 
-  const file = formData.get("file") as File | null;
-  const note = (formData.get("note") as string | null)?.trim() || null;
-  if (!file) return { ok: false, error: "Aucun fichier." };
-  const fileValidation = validateDocumentUpload(file, 25 * 1024 * 1024);
+  const fileValidation = validateDocumentUpload(meta, 25 * 1024 * 1024);
   if (!fileValidation.ok) return fileValidation;
+  const storageCheck = await assertStorageAvailable(supabase, shareLink.workspace_id, meta.size);
+  if (!storageCheck.ok) return storageCheck;
+
+  const safeName = buildSafeStorageFilename(meta.name, fileValidation.data.extension);
+  const storagePath = `${shareLink.workspace_id}/portal-uploads/${shareLink.resource_id}/${Date.now()}-${safeName}`;
+  const { data: signed, error } = await supabase.storage.from(STORAGE_BUCKET).createSignedUploadUrl(storagePath);
+  if (error || !signed) return { ok: false, error: error?.message ?? "Impossible de préparer l'envoi." };
+
+  return { ok: true, data: { bucket: STORAGE_BUCKET, path: signed.path, uploadToken: signed.token, contentType: fileValidation.data.contentType } };
+}
+
+/**
+ * Step 2: record the client-uploaded document. Re-validates the share link,
+ * the path prefix, and that the object actually exists (untrusted public input)
+ * so a forged ticket can't create a dangling file row.
+ */
+export async function finalizePortalDocumentAction(
+  token: string,
+  input: { path: string; filename: string; sizeBytes: number; contentType: string; note?: string | null }
+): Promise<Result<void>> {
+  const { supabase, shareLink, error: linkError } = await getValidProjectShareLink(token);
+  if (!shareLink) return { ok: false, error: linkError ?? "Lien invalide." };
+
+  const prefix = `${shareLink.workspace_id}/portal-uploads/${shareLink.resource_id}/`;
+  if (!input.path.startsWith(prefix)) return { ok: false, error: "Chemin de stockage invalide." };
+
+  const note = input.note?.trim() || null;
   if (note && note.length > MAX_PORTAL_NOTE_LENGTH) {
     return { ok: false, error: `Note trop longue (${MAX_PORTAL_NOTE_LENGTH} caractères max).` };
   }
-  const storageCheck = await assertStorageAvailable(supabase, shareLink.workspace_id, file.size);
-  if (!storageCheck.ok) return storageCheck;
 
-  const safeName = buildSafeStorageFilename(file.name, fileValidation.data.extension);
-  const storagePath = `${shareLink.workspace_id}/portal-uploads/${shareLink.resource_id}/${Date.now()}-${safeName}`;
-  const buffer = await file.arrayBuffer();
-
-  const { error: uploadError } = await supabase.storage
-    .from(STORAGE_BUCKET)
-    .upload(storagePath, buffer, { contentType: fileValidation.data.contentType, upsert: false });
-
-  if (uploadError) return { ok: false, error: uploadError.message };
+  // Confirm the object was really uploaded (don't trust a client-supplied path).
+  const objectName = input.path.slice(prefix.length);
+  const { data: listed } = await supabase.storage.from(STORAGE_BUCKET).list(prefix.replace(/\/$/, ""), { search: objectName });
+  if (!listed?.some((o) => o.name === objectName)) return { ok: false, error: "Fichier introuvable. Réessayez l'envoi." };
 
   const { error } = await supabase.from("files").insert({
     workspace_id: shareLink.workspace_id,
     project_id: shareLink.resource_id,
     folder: "Documents client",
-    filename: file.name,
-    storage_path: storagePath,
-    size_bytes: file.size,
-    mime_type: fileValidation.data.contentType,
+    filename: input.filename,
+    storage_path: input.path,
+    size_bytes: input.sizeBytes,
+    mime_type: input.contentType,
     note,
     approval_status: "approved",
     metadata: { source: "client_portal", share_token: token },
@@ -329,7 +352,7 @@ export async function uploadPortalDocumentAction(
     workspace_id: shareLink.workspace_id,
     project_id: shareLink.resource_id,
     action: "portal.document_uploaded",
-    metadata: { filename: file.name, size_bytes: file.size, share_token: token },
+    metadata: { filename: input.filename, size_bytes: input.sizeBytes, share_token: token },
   });
 
   revalidatePath(`/portal/${token}`);

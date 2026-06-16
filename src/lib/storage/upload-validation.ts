@@ -2,6 +2,11 @@ import "server-only";
 
 import type { Result } from "@/types";
 
+// Only the fields the validators read. A browser `File` satisfies this, and so
+// does the {name,type,size} metadata sent ahead of a direct-to-storage upload
+// (signed-URL flow) — letting us validate server-side without the file bytes.
+export type UploadFileMeta = { name: string; type: string; size: number };
+
 const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp"]);
 
@@ -52,7 +57,7 @@ const DOCUMENT_EXTENSIONS = new Set([
   "mov",
 ]);
 
-function normalizedMime(file: File) {
+function normalizedMime(file: UploadFileMeta) {
   return (file.type || "application/octet-stream").toLowerCase().split(";")[0]!.trim();
 }
 
@@ -68,7 +73,7 @@ function imageContentTypeFromExtension(extension: string) {
   return "image/jpeg";
 }
 
-function validateBaseFile(file: File, maxBytes: number, label: string): Result<void> {
+function validateBaseFile(file: UploadFileMeta, maxBytes: number, label: string): Result<void> {
   if (file.size <= 0) return { ok: false, error: `${label} vide ou invalide.` };
   if (file.size > maxBytes) {
     const maxMb = Math.round(maxBytes / 1024 / 1024);
@@ -77,7 +82,7 @@ function validateBaseFile(file: File, maxBytes: number, label: string): Result<v
   return { ok: true, data: undefined };
 }
 
-export function validateImageUpload(file: File, maxBytes: number): Result<{ extension: string; contentType: string }> {
+export function validateImageUpload(file: UploadFileMeta, maxBytes: number): Result<{ extension: string; contentType: string }> {
   const base = validateBaseFile(file, maxBytes, "Image");
   if (!base.ok) return base;
 
@@ -96,7 +101,7 @@ export function validateImageUpload(file: File, maxBytes: number): Result<{ exte
   };
 }
 
-export function validateDocumentUpload(file: File, maxBytes: number): Result<{ extension: string; contentType: string }> {
+export function validateDocumentUpload(file: UploadFileMeta, maxBytes: number): Result<{ extension: string; contentType: string }> {
   const base = validateBaseFile(file, maxBytes, "Fichier");
   if (!base.ok) return base;
 

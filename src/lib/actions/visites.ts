@@ -5,7 +5,7 @@ import { requireWorkspaceRole } from "@/lib/workspace";
 import { revalidatePath } from "next/cache";
 import type { Result } from "@/types";
 import { assertStorageAvailable } from "@/lib/billing/guards";
-import { buildSafeStorageFilename, validateImageUpload } from "@/lib/storage/upload-validation";
+import { buildSafeStorageFilename, validateImageUpload, type UploadFileMeta } from "@/lib/storage/upload-validation";
 import { dbError } from "@/lib/db-error";
 
 export interface Observation {
@@ -100,10 +100,16 @@ export async function createVisiteAction(input: CreateVisiteInput): Promise<Resu
   return { ok: true, data: { id: data.id } };
 }
 
-export async function uploadVisitePhotoAction(
+/**
+ * Signed-URL ticket for a direct-to-storage site-visit photo upload — the
+ * browser PUTs the bytes to Storage, bypassing the Vercel ~4.5 MB server-action
+ * body cap (phone photos routinely exceed it). The client then mints its own
+ * 1 h preview URL via the browser Supabase client.
+ */
+export async function createVisitePhotoUploadUrlAction(
   projectId: string,
-  formData: FormData
-): Promise<Result<{ url: string; path: string }>> {
+  meta: UploadFileMeta
+): Promise<Result<{ bucket: string; path: string; token: string; contentType: string }>> {
   const supabase = await createClient();
   const context = await requireWorkspaceRole(supabase);
   if (!context.ok) return { ok: false, error: context.error };
@@ -117,28 +123,20 @@ export async function uploadVisitePhotoAction(
     .single();
   if (!project) return { ok: false, error: "Projet introuvable." };
 
-  const file = formData.get("photo") as File | null;
-  if (!file) return { ok: false, error: "Aucune photo." };
-
-  const fileValidation = validateImageUpload(file, 10 * 1024 * 1024);
+  const fileValidation = validateImageUpload(meta, 10 * 1024 * 1024);
   if (!fileValidation.ok) return fileValidation;
-  const storageCheck = await assertStorageAvailable(supabase, workspaceId, file.size);
+  const storageCheck = await assertStorageAvailable(supabase, workspaceId, meta.size);
   if (!storageCheck.ok) return storageCheck;
 
-  const safeName = buildSafeStorageFilename(file.name, fileValidation.data.extension);
+  const safeName = buildSafeStorageFilename(meta.name, fileValidation.data.extension);
   const path = `${workspaceId}/${projectId}/visites/${Date.now()}_${safeName}`;
-  const arrayBuffer = await file.arrayBuffer();
 
-  const { error } = await supabase.storage
+  const { data: signed, error } = await supabase.storage
     .from("project-files")
-    .upload(path, arrayBuffer, { contentType: fileValidation.data.contentType, upsert: false });
+    .createSignedUploadUrl(path);
+  if (error || !signed) return { ok: false, error: error?.message ?? "Impossible de préparer l'envoi." };
 
-  if (error) return { ok: false, error: dbError(error) };
-
-  const { data } = await supabase.storage.from("project-files").createSignedUrl(path, 60 * 60);
-  if (!data?.signedUrl) return { ok: false, error: "Photo envoyée, mais l'aperçu n'a pas pu être généré." };
-
-  return { ok: true, data: { url: data.signedUrl, path } };
+  return { ok: true, data: { bucket: "project-files", path: signed.path, token: signed.token, contentType: fileValidation.data.contentType } };
 }
 
 export async function deleteVisiteAction(id: string, projectId: string): Promise<Result<void>> {

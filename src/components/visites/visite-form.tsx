@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { AlertTriangle, Camera, Plus, Trash2, Loader2, Sparkles, MapPin, X } from "lucide-react";
 import Image from "next/image";
-import { createVisiteAction, uploadVisitePhotoAction } from "@/lib/actions/visites";
+import { createVisiteAction, createVisitePhotoUploadUrlAction } from "@/lib/actions/visites";
+import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { Observation } from "@/lib/actions/visites";
 import { IMAGE_UPLOAD_ACCEPT, isAllowedImageFile } from "@/lib/upload-rules";
 
@@ -54,12 +55,17 @@ export function VisiteForm({ projectId, projectTitle, aiEnabled }: VisiteFormPro
     if (!isAllowedImageFile(file)) { toast.error("Photo requise : JPG, PNG ou WEBP."); return; }
     if (file.size > 10 * 1024 * 1024) { toast.error("Photo trop lourde (max 10 Mo)."); return; }
     setUploadingIdx(idx);
-    const fd = new FormData();
-    fd.append("photo", file);
-    const result = await uploadVisitePhotoAction(projectId, fd);
+    // Direct-to-storage signed upload (bypasses the Vercel server-action body cap)
+    const ticket = await createVisitePhotoUploadUrlAction(projectId, { name: file.name, type: file.type, size: file.size });
+    if (!ticket.ok) { setUploadingIdx(null); toast.error(ticket.error); return; }
+    const supabase = createSupabaseBrowserClient();
+    const { error: uploadError } = await supabase.storage
+      .from(ticket.data.bucket)
+      .uploadToSignedUrl(ticket.data.path, ticket.data.token, file, { contentType: ticket.data.contentType });
+    if (uploadError) { setUploadingIdx(null); toast.error(uploadError.message); return; }
+    const { data: preview } = await supabase.storage.from(ticket.data.bucket).createSignedUrl(ticket.data.path, 60 * 60);
     setUploadingIdx(null);
-    if (!result.ok) { toast.error(result.error); return; }
-    updateObs(idx, { photoUrl: result.data.url, photoPath: result.data.path });
+    updateObs(idx, { photoUrl: preview?.signedUrl ?? "", photoPath: ticket.data.path });
   }
 
   async function handleGenerateSummary() {

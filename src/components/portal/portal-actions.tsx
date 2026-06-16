@@ -11,8 +11,10 @@ import {
   createPortalMessageAction,
   respondPortalFileApprovalAction,
   respondPortalDevisAction,
-  uploadPortalDocumentAction,
+  createPortalDocumentUploadUrlAction,
+  finalizePortalDocumentAction,
 } from "@/lib/actions/portal";
+import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { DOCUMENT_UPLOAD_ACCEPT, isAllowedDocumentFile } from "@/lib/upload-rules";
 
 export function PortalDevisResponse({
@@ -116,11 +118,25 @@ export function PortalDocumentUpload({ token }: { token: string }) {
 
   function submit(formData: FormData) {
     startTransition(async () => {
-      const result = await uploadPortalDocumentAction(token, formData);
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
-      }
+      const file = formData.get("file") as File | null;
+      const note = (formData.get("note") as string | null) ?? "";
+      if (!file) return;
+      // Direct-to-storage signed upload (bypasses the Vercel server-action body cap)
+      const ticket = await createPortalDocumentUploadUrlAction(token, { name: file.name, type: file.type, size: file.size });
+      if (!ticket.ok) { toast.error(ticket.error); return; }
+      const supabase = createSupabaseBrowserClient();
+      const { error: uploadError } = await supabase.storage
+        .from(ticket.data.bucket)
+        .uploadToSignedUrl(ticket.data.path, ticket.data.uploadToken, file, { contentType: ticket.data.contentType });
+      if (uploadError) { toast.error(uploadError.message); return; }
+      const result = await finalizePortalDocumentAction(token, {
+        path: ticket.data.path,
+        filename: file.name,
+        sizeBytes: file.size,
+        contentType: ticket.data.contentType,
+        note,
+      });
+      if (!result.ok) { toast.error(result.error); return; }
       setKey((current) => current + 1);
       toast.success("Document envoyé.");
       router.refresh();

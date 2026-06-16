@@ -21,7 +21,8 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { uploadFileAction, getFileDownloadUrl, deleteFileAction, updateFileApprovalStatusAction } from "@/lib/actions/files";
+import { createFileUploadUrlAction, finalizeFileUploadAction, getFileDownloadUrl, deleteFileAction, updateFileApprovalStatusAction } from "@/lib/actions/files";
+import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useUpgradeModal } from "@/components/billing/use-upgrade-modal";
 import { formatFileSize } from "@/lib/format";
 import { useLocalization } from "@/components/localization-provider";
@@ -99,17 +100,45 @@ export function FileManager({ projectId, filesByFolder, allFiles, defaultFolders
       if (validFiles.length === 0) return;
 
       setUploading(true);
+      const supabase = createSupabaseBrowserClient();
 
       for (const file of validFiles) {
-        const formData = new FormData();
-        formData.append("file", file);
-        const result = await uploadFileAction(projectId, activeFolder, formData);
-        if (!result.ok) {
-          if (result.code === "upgrade_required") {
+        // Direct-to-storage: get a signed upload URL, PUT the bytes straight to
+        // Storage (no server-action body), then record the row.
+        const ticket = await createFileUploadUrlAction(projectId, activeFolder, {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+        });
+        if (!ticket.ok) {
+          if (ticket.code === "upgrade_required") {
             setUploading(false);
-            triggerUpgrade(result.error);
+            triggerUpgrade(ticket.error);
             return;
           }
+          toast.error(`Erreur : ${ticket.error}`);
+          continue;
+        }
+
+        const { error: uploadError } = await supabase.storage
+          .from(ticket.data.bucket)
+          .uploadToSignedUrl(ticket.data.storagePath, ticket.data.token, file, {
+            contentType: ticket.data.contentType,
+          });
+        if (uploadError) {
+          toast.error(`${file.name} : ${uploadError.message}`);
+          continue;
+        }
+
+        const result = await finalizeFileUploadAction({
+          projectId,
+          folder: activeFolder,
+          filename: file.name,
+          storagePath: ticket.data.storagePath,
+          sizeBytes: file.size,
+          contentType: ticket.data.contentType,
+        });
+        if (!result.ok) {
           toast.error(`Erreur : ${result.error}`);
         } else {
           toast.success(`${result.data.filename} déposé.`);
