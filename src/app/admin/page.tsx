@@ -7,7 +7,7 @@ import { listAdminWorkspaces, type AdminWorkspace } from "@/lib/admin/workspaces
 import { listAdminUsers } from "@/lib/admin/users";
 import { getAdminMetrics, getAttentionList } from "@/lib/admin/metrics";
 import { listSuperadminAudit, auditActionLabel } from "@/lib/admin/audit";
-import { adminSearchAction, createWorkspaceForUserAdminAction, updateAdminUserAuthAction, updateWorkspaceAdminAction, updateWorkspaceOwnerAuthAction } from "@/lib/actions/admin";
+import { adminSearchAction, confirmUserEmailAdminAction, createWorkspaceForUserAdminAction, extendTrialAdminAction, resetAiUsageAdminAction, updateAdminUserAuthAction, updateWorkspaceAdminAction, updateWorkspaceOwnerAuthAction } from "@/lib/actions/admin";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -290,6 +290,7 @@ export default async function AdminPage({
                   <TableCell className="align-top">
                     <form action={updateWorkspaceAdminAction} className="grid gap-2">
                       <input type="hidden" name="workspaceId" value={workspace.id} />
+                      <Input name="name" defaultValue={workspace.name} placeholder="Nom du cabinet" className="h-9 text-sm" />
                       <div className="grid grid-cols-2 gap-2">
                         <select name="plan" defaultValue={workspace.plan} className="h-9 rounded-md border border-[#E5E7EB] bg-white px-2 text-sm">
                           <option value="solo">Basic</option>
@@ -324,20 +325,35 @@ export default async function AdminPage({
                         Enregistrer
                       </Button>
                     </form>
-                    <form action={updateWorkspaceOwnerAuthAction} className="mt-2 flex gap-2">
-                      <input type="hidden" name="workspaceId" value={workspace.id} />
-                      <input type="hidden" name="ownerId" value={workspace.ownerId} />
-                      <Button
-                        type="submit"
-                        name="mode"
-                        value={workspace.ownerBannedUntil ? "unban" : "ban"}
-                        size="sm"
-                        variant="outline"
-                        className={workspace.ownerBannedUntil ? "border-[#2F8F5C] text-[#2F8F5C]" : "border-[#F0D2C1] text-[#C75B2E]"}
-                      >
-                        {workspace.ownerBannedUntil ? "Réactiver login owner" : "Bloquer login owner"}
-                      </Button>
-                    </form>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <form action={extendTrialAdminAction} className="flex items-center gap-1">
+                        <input type="hidden" name="workspaceId" value={workspace.id} />
+                        <select name="days" defaultValue="14" className="h-8 rounded-md border border-[#E5E7EB] bg-white px-1.5 text-xs">
+                          <option value="7">+7 j</option>
+                          <option value="14">+14 j</option>
+                          <option value="30">+30 j</option>
+                        </select>
+                        <Button type="submit" size="sm" variant="outline" className="h-8 border-[#CFE0FB] text-[#2563EB]">Prolonger essai</Button>
+                      </form>
+                      <form action={resetAiUsageAdminAction}>
+                        <input type="hidden" name="workspaceId" value={workspace.id} />
+                        <Button type="submit" size="sm" variant="outline" className="h-8">Reset quota IA</Button>
+                      </form>
+                      <form action={updateWorkspaceOwnerAuthAction}>
+                        <input type="hidden" name="workspaceId" value={workspace.id} />
+                        <input type="hidden" name="ownerId" value={workspace.ownerId} />
+                        <Button
+                          type="submit"
+                          name="mode"
+                          value={workspace.ownerBannedUntil ? "unban" : "ban"}
+                          size="sm"
+                          variant="outline"
+                          className={`h-8 ${workspace.ownerBannedUntil ? "border-[#2F8F5C] text-[#2F8F5C]" : "border-[#F0D2C1] text-[#C75B2E]"}`}
+                        >
+                          {workspace.ownerBannedUntil ? "Réactiver login" : "Bloquer login"}
+                        </Button>
+                      </form>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -400,6 +416,9 @@ export default async function AdminPage({
                   <TableCell className="align-top text-sm text-[#475569]">
                     <p>{formatDate(userRow.lastSignInAt)}</p>
                     <p className="mt-1 text-xs text-[#ADAB9D]">Créé {formatDate(userRow.createdAt)}</p>
+                    {!userRow.emailConfirmedAt && (
+                      <span className="mt-1 inline-flex rounded-full bg-[#FDF6E9] px-2 py-0.5 text-[11px] font-semibold text-[#9A6B12]">Email non confirmé</span>
+                    )}
                   </TableCell>
                   <TableCell className="align-top">
                     {userRow.bannedUntil ? (
@@ -422,6 +441,15 @@ export default async function AdminPage({
                           className="bg-[#0B1220] text-white hover:bg-[#2C2D24]"
                         >
                           Créer workspace
+                        </Button>
+                      </form>
+                    )}
+                    {!userRow.emailConfirmedAt && (
+                      <form action={confirmUserEmailAdminAction} className="mb-2">
+                        <input type="hidden" name="userId" value={userRow.id} />
+                        {userRow.workspaces[0] && <input type="hidden" name="workspaceId" value={userRow.workspaces[0].workspaceId} />}
+                        <Button type="submit" size="sm" variant="outline" className="border-[#CFE0FB] text-[#2563EB]">
+                          Confirmer email
                         </Button>
                       </form>
                     )}

@@ -36,10 +36,12 @@ export async function updateWorkspaceAdminAction(formData: FormData) {
   const subscriptionSource = pickEnum(formData.get("subscriptionSource"), SUBSCRIPTION_SOURCES, "manual");
   const plan = pickEnum(formData.get("plan"), PLANS, "solo");
   const suspendedReason = optionalText(formData.get("suspendedReason"));
+  const name = optionalText(formData.get("name"));
 
   const { error } = await serviceSupabase
     .from("workspaces")
     .update({
+      ...(name ? { name } : {}),
       plan,
       account_status: accountStatus,
       subscription_status: subscriptionStatus,
@@ -71,6 +73,108 @@ export async function updateWorkspaceAdminAction(formData: FormData) {
 
   revalidatePath("/admin");
   redirectWithAdminMessage("adminNotice", "Workspace mis à jour.");
+}
+
+const TRIAL_DAYS = [7, 14, 30] as const;
+
+/** Grant or extend a workspace trial (sales/retention lever). Extends from the
+ *  later of now / current trial end, and reactivates the account + trialing state. */
+export async function extendTrialAdminAction(formData: FormData) {
+  const supabase = await createClient();
+  const actor = await requireSuperadmin(supabase);
+  const serviceSupabase = await createServiceClient();
+
+  const workspaceId = String(formData.get("workspaceId") ?? "");
+  if (!workspaceId) redirectWithAdminMessage("adminError", "Workspace manquant.");
+  const days = TRIAL_DAYS.includes(Number(formData.get("days")) as (typeof TRIAL_DAYS)[number])
+    ? Number(formData.get("days"))
+    : 14;
+
+  const { data: ws, error: readError } = await serviceSupabase
+    .from("workspaces")
+    .select("trial_ends_at")
+    .eq("id", workspaceId)
+    .single();
+  if (readError || !ws) redirectWithAdminMessage("adminError", readError?.message ?? "Workspace introuvable.");
+
+  const now = Date.now();
+  const base = ws.trial_ends_at ? Math.max(now, new Date(ws.trial_ends_at).getTime()) : now;
+  const newEnd = new Date(base + days * 24 * 60 * 60 * 1000).toISOString();
+
+  const { error } = await serviceSupabase
+    .from("workspaces")
+    .update({
+      trial_ends_at: newEnd,
+      subscription_status: "trialing",
+      account_status: "active",
+      suspended_at: null,
+      suspended_reason: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", workspaceId);
+  if (error) redirectWithAdminMessage("adminError", error.message);
+
+  await serviceSupabase.from("activity_log").insert({
+    workspace_id: workspaceId,
+    action: "superadmin.trial_extended",
+    metadata: { actor_id: actor.id, actor_email: actor.email, days, trial_ends_at: newEnd },
+  });
+
+  revalidatePath("/admin");
+  redirectWithAdminMessage("adminNotice", `Essai prolongé de ${days} j (fin ${newEnd.slice(0, 10)}).`);
+}
+
+/** Reset the workspace's AI usage for the current month (quota dispute / goodwill). */
+export async function resetAiUsageAdminAction(formData: FormData) {
+  const supabase = await createClient();
+  const actor = await requireSuperadmin(supabase);
+  const serviceSupabase = await createServiceClient();
+
+  const workspaceId = String(formData.get("workspaceId") ?? "");
+  if (!workspaceId) redirectWithAdminMessage("adminError", "Workspace manquant.");
+
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+  const { error } = await serviceSupabase
+    .from("ai_usage_logs")
+    .delete()
+    .eq("workspace_id", workspaceId)
+    .gte("created_at", monthStart);
+  if (error) redirectWithAdminMessage("adminError", error.message);
+
+  await serviceSupabase.from("activity_log").insert({
+    workspace_id: workspaceId,
+    action: "superadmin.ai_usage_reset",
+    metadata: { actor_id: actor.id, actor_email: actor.email, month_start: monthStart },
+  });
+
+  revalidatePath("/admin");
+  redirectWithAdminMessage("adminNotice", "Quota IA du mois réinitialisé.");
+}
+
+/** Manually confirm a user's email — unblocks login when the signup email gate
+ *  hasn't delivered (the superadmin vouches for the account). */
+export async function confirmUserEmailAdminAction(formData: FormData) {
+  const supabase = await createClient();
+  const actor = await requireSuperadmin(supabase);
+  const serviceSupabase = await createServiceClient();
+
+  const userId = String(formData.get("userId") ?? "");
+  if (!userId) redirectWithAdminMessage("adminError", "Utilisateur manquant.");
+
+  const { error } = await serviceSupabase.auth.admin.updateUserById(userId, { email_confirm: true });
+  if (error) redirectWithAdminMessage("adminError", error.message);
+
+  const workspaceId = optionalText(formData.get("workspaceId"));
+  if (workspaceId) {
+    await serviceSupabase.from("activity_log").insert({
+      workspace_id: workspaceId,
+      action: "superadmin.email_confirmed",
+      metadata: { actor_id: actor.id, actor_email: actor.email, user_id: userId },
+    });
+  }
+
+  revalidatePath("/admin");
+  redirectWithAdminMessage("adminNotice", "Email confirmé — l'utilisateur peut se connecter.");
 }
 
 export async function adminSearchAction(formData: FormData) {

@@ -19,6 +19,9 @@ const ACTION_LABELS: Record<string, string> = {
   "superadmin.user_banned": "Utilisateur bloqué",
   "superadmin.user_unbanned": "Utilisateur réactivé",
   "superadmin.workspace_repaired": "Workspace créé/réparé",
+  "superadmin.trial_extended": "Essai prolongé",
+  "superadmin.ai_usage_reset": "Quota IA réinitialisé",
+  "superadmin.email_confirmed": "Email confirmé",
 };
 
 export function auditActionLabel(action: string): string {

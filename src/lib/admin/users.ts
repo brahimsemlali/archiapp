@@ -14,6 +14,7 @@ export type AdminUser = {
   email: string | null;
   createdAt: string;
   lastSignInAt: string | null;
+  emailConfirmedAt: string | null;
   bannedUntil: string | null;
   isSuperadmin: boolean;
   workspaces: AdminUserWorkspace[];
@@ -61,6 +62,7 @@ export async function listAdminUsers(query?: string): Promise<AdminUser[]> {
     email: user.email ?? null,
     createdAt: user.created_at,
     lastSignInAt: user.last_sign_in_at ?? null,
+    emailConfirmedAt: user.email_confirmed_at ?? user.confirmed_at ?? null,
     bannedUntil: user.banned_until ?? null,
     isSuperadmin: !!user.email && superadminEmails.has(user.email.toLowerCase()),
     workspaces: membershipsByUser.get(user.id) ?? [],
