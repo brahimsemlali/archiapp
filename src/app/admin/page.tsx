@@ -1,9 +1,12 @@
 import { notFound } from "next/navigation";
-import { Activity, Building2, Crown, Database, Search, ShieldAlert, Sparkles, UserX, Users } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, Clock, Coins, Crown, Database, Download, History, Search, Sparkles, TrendingUp, UserX, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getSuperadminUser } from "@/lib/admin/auth";
-import { listAdminWorkspaces } from "@/lib/admin/workspaces";
+import { listAdminWorkspaces, type AdminWorkspace } from "@/lib/admin/workspaces";
 import { listAdminUsers } from "@/lib/admin/users";
+import { getAdminMetrics, getAttentionList } from "@/lib/admin/metrics";
+import { listSuperadminAudit, auditActionLabel } from "@/lib/admin/audit";
 import { adminSearchAction, createWorkspaceForUserAdminAction, updateAdminUserAuthAction, updateWorkspaceAdminAction, updateWorkspaceOwnerAuthAction } from "@/lib/actions/admin";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,7 +19,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { PLAN_LIMITS } from "@/lib/billing/plans";
+import { PLAN_LIMITS, getPlanLimits } from "@/lib/billing/plans";
+
+function formatMad(value: number) {
+  return `${value.toLocaleString("fr-FR")} MAD`;
+}
+
+const ATTENTION_TONE: Record<string, string> = {
+  past_due: "border-[#F0D2C1] bg-[#FCEFE6] text-[#9F3D1F]",
+  suspended: "border-[#E5E7EB] bg-[#F1F5F9] text-[#475569]",
+  trial_ending: "border-[#FBE6C0] bg-[#FDF6E9] text-[#9A6B12]",
+};
 
 const ACCOUNT_STATUS_LABELS: Record<string, string> = {
   active: "Actif",
@@ -50,6 +63,29 @@ function formatStorage(bytes: number) {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} Go`;
 }
 
+/** Usage vs the workspace's plan limits, flagging anything over (abuse / upgrade signal). */
+function UsageLines({ workspace }: { workspace: AdminWorkspace }) {
+  const limits = getPlanLimits(workspace.plan);
+  const storageLimitBytes = limits.storageGb * 1024 * 1024 * 1024;
+  const over = {
+    seats: workspace.membersCount > limits.seats,
+    projects: limits.projects !== null && workspace.projectsCount > limits.projects,
+    storage: workspace.storageBytes > storageLimitBytes,
+    ai: limits.aiEnabled && workspace.aiCallsThisMonth > limits.aiCalls,
+  };
+  const flag = (on: boolean) => (on ? "font-semibold text-[#C75B2E]" : "");
+  return (
+    <>
+      <p className={flag(over.seats)}>{workspace.membersCount}/{limits.seats} membres</p>
+      <p className={flag(over.projects)}>{workspace.projectsCount}/{limits.projects ?? "∞"} projets</p>
+      <p className={flag(over.storage)}>{formatStorage(workspace.storageBytes)} / {limits.storageGb} Go</p>
+      <p className={flag(over.ai)}>{workspace.aiCallsThisMonth}{limits.aiEnabled ? `/${limits.aiCalls}` : ""} appels IA</p>
+      <p>{workspace.clientsCount} clients</p>
+      <p className="text-xs text-[#ADAB9D]">Activité : {formatDate(workspace.lastActivityAt)}</p>
+    </>
+  );
+}
+
 export default async function AdminPage({
   searchParams,
 }: {
@@ -60,17 +96,17 @@ export default async function AdminPage({
   if (!user) notFound();
 
   const params = await searchParams;
-  const [workspaces, users] = await Promise.all([
+  const [workspaces, users, auditEntries] = await Promise.all([
     listAdminWorkspaces(params.q),
     listAdminUsers(params.q),
+    listSuperadminAudit(40),
   ]);
-  const activeCount = workspaces.filter((workspace) => workspace.accountStatus === "active").length;
-  const suspendedCount = workspaces.filter((workspace) => workspace.accountStatus === "suspended").length;
-  const aiCount = workspaces.filter((workspace) => workspace.plan === "studio" || workspace.plan === "agence").length;
+  // Metrics + attention are computed over the (optionally filtered) workspace list;
+  // when no search is active that's the whole base, which is what we want.
+  const metrics = getAdminMetrics(workspaces);
+  const attention = getAttentionList(workspaces);
   const bannedUsersCount = users.filter((userRow) => userRow.bannedUntil).length;
   const orphanUsersCount = users.filter((userRow) => userRow.workspaces.length === 0).length;
-  const totalStorageBytes = workspaces.reduce((sum, workspace) => sum + workspace.storageBytes, 0);
-  const totalAiCalls = workspaces.reduce((sum, workspace) => sum + workspace.aiCallsThisMonth, 0);
 
   return (
     <main className="min-h-dvh bg-[#F7F8FA] px-5 py-6 text-[#0B1220]">
@@ -87,13 +123,22 @@ export default async function AdminPage({
             </div>
           </div>
 
-          <form action={adminSearchAction} className="flex w-full gap-2 md:w-[360px]">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]" />
-              <Input name="q" defaultValue={params.q ?? ""} placeholder="Chercher cabinet, email, ID..." className="h-10 pl-9" />
-            </div>
-            <Button type="submit" className="h-10">Chercher</Button>
-          </form>
+          <div className="flex w-full flex-col gap-2 sm:flex-row md:w-auto">
+            <form action={adminSearchAction} className="flex w-full gap-2 md:w-[360px]">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#64748B]" />
+                <Input name="q" defaultValue={params.q ?? ""} placeholder="Chercher cabinet, email, ID..." className="h-10 pl-9" />
+              </div>
+              <Button type="submit" className="h-10">Chercher</Button>
+            </form>
+            <Link
+              href="/admin/export"
+              prefetch={false}
+              className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-[#E5E7EB] bg-white px-4 text-sm font-medium text-[#0B1220] transition-colors hover:bg-[#F1F5F9]"
+            >
+              <Download className="h-4 w-4" />CSV
+            </Link>
+          </div>
         </header>
 
         {(params.adminNotice || params.adminError) && (
@@ -108,47 +153,72 @@ export default async function AdminPage({
           </div>
         )}
 
+        {/* Revenue cockpit — the founder-facing headline numbers */}
         <section className="grid gap-3 md:grid-cols-4">
-          {[
-            { label: "Workspaces", value: workspaces.length, icon: Building2, tone: "text-[#2563EB]" },
-            { label: "Actifs", value: activeCount, icon: Activity, tone: "text-[#2F8F5C]" },
-            { label: "Suspendus", value: suspendedCount, icon: ShieldAlert, tone: "text-[#C75B2E]" },
-            { label: "Utilisateurs bloqués", value: bannedUsersCount, icon: UserX, tone: "text-[#C75B2E]" },
-          ].map((item) => {
-            const Icon = item.icon;
-            return (
-              <div key={item.label} className="rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-[0_10px_28px_rgba(22,23,14,0.055)]">
-                <Icon className={`mb-3 h-5 w-5 ${item.tone}`} />
-                <p className="text-2xl font-semibold tabnum">{item.value}</p>
-                <p className="text-xs font-medium uppercase tracking-wide text-[#64748B]">{item.label}</p>
-              </div>
-            );
-          })}
+          <div className="rounded-2xl border border-[#CFE7D8] bg-gradient-to-br from-[#F2FAF5] to-white p-5 shadow-[0_10px_28px_rgba(22,23,14,0.055)]">
+            <div className="flex items-center gap-2 text-[#2F8F5C]"><Coins className="h-4 w-4" /><p className="text-xs font-semibold uppercase tracking-wide">MRR encaissé</p></div>
+            <p className="mt-2 text-3xl font-semibold tabnum text-[#0B1220]">{formatMad(metrics.collectedMrrMad)}</p>
+            <p className="mt-1 text-xs text-[#64748B]">{metrics.collectedPayingCount} abonnés payants · ARR {formatMad(metrics.collectedArrMad)}</p>
+          </div>
+          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-[0_10px_28px_rgba(22,23,14,0.055)]">
+            <div className="flex items-center gap-2 text-[#2563EB]"><Clock className="h-4 w-4" /><p className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">Essais actifs</p></div>
+            <p className="mt-2 text-3xl font-semibold tabnum">{metrics.activeTrials}</p>
+            <p className="mt-1 text-xs text-[#64748B]">{metrics.trialsEndingSoon} se terminent ≤ 7 j</p>
+          </div>
+          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-[0_10px_28px_rgba(22,23,14,0.055)]">
+            <div className="flex items-center gap-2 text-[#C75B2E]"><AlertTriangle className="h-4 w-4" /><p className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">À risque</p></div>
+            <p className="mt-2 text-3xl font-semibold tabnum">{metrics.pastDueCount}</p>
+            <p className="mt-1 text-xs text-[#64748B]">paiement échoué · {metrics.suspendedCount} suspendus · {metrics.churnedCount} résiliés</p>
+          </div>
+          <div className="rounded-2xl border border-[#E5E7EB] bg-white p-5 shadow-[0_10px_28px_rgba(22,23,14,0.055)]">
+            <div className="flex items-center gap-2 text-[#2563EB]"><TrendingUp className="h-4 w-4" /><p className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">Nouveaux ce mois</p></div>
+            <p className="mt-2 text-3xl font-semibold tabnum">{metrics.newThisMonth}</p>
+            <p className="mt-1 text-xs text-[#64748B]">{metrics.totalWorkspaces} cabinets au total</p>
+          </div>
         </section>
 
-        <section className="grid gap-3 md:grid-cols-3">
+        {/* Secondary ops row */}
+        <section className="grid gap-3 md:grid-cols-4">
           <div className="rounded-xl border border-[#E5E7EB] bg-white p-4">
-            <div className="flex items-center gap-2 text-[#2563EB]">
-              <Sparkles className="h-4 w-4" />
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">Plans AI</p>
-            </div>
-            <p className="mt-2 text-2xl font-semibold tabnum">{aiCount}</p>
-            <p className="mt-1 text-xs text-[#64748B]">{totalAiCalls} appels IA ce mois</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">Actifs manuels / offerts</p>
+            <p className="mt-2 text-2xl font-semibold tabnum">{metrics.manualActiveCount}</p>
+            <p className="mt-1 text-xs text-[#64748B]">{formatMad(metrics.manualActiveValueMad)} si facturés — hors MRR</p>
           </div>
           <div className="rounded-xl border border-[#E5E7EB] bg-white p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">Utilisateurs sans workspace</p>
-            <p className="mt-2 text-2xl font-semibold tabnum">{orphanUsersCount}</p>
-            <p className="mt-1 text-xs text-[#64748B]">Comptes auth à vérifier</p>
+            <div className="flex items-center gap-2 text-[#2563EB]"><Sparkles className="h-4 w-4" /><p className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">Appels IA ce mois</p></div>
+            <p className="mt-2 text-2xl font-semibold tabnum">{metrics.totalAiCalls}</p>
           </div>
           <div className="rounded-xl border border-[#E5E7EB] bg-white p-4">
-            <div className="flex items-center gap-2 text-[#2F8F5C]">
-              <Database className="h-4 w-4" />
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">Stockage total</p>
-            </div>
-            <p className="mt-2 text-2xl font-semibold tabnum">{formatStorage(totalStorageBytes)}</p>
-            <p className="mt-1 text-xs text-[#64748B]">Tous cabinets confondus</p>
+            <div className="flex items-center gap-2 text-[#2F8F5C]"><Database className="h-4 w-4" /><p className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">Stockage total</p></div>
+            <p className="mt-2 text-2xl font-semibold tabnum">{formatStorage(metrics.totalStorageBytes)}</p>
+          </div>
+          <div className="rounded-xl border border-[#E5E7EB] bg-white p-4">
+            <div className="flex items-center gap-2 text-[#C75B2E]"><UserX className="h-4 w-4" /><p className="text-xs font-semibold uppercase tracking-wide text-[#64748B]">Comptes à vérifier</p></div>
+            <p className="mt-2 text-2xl font-semibold tabnum">{bannedUsersCount + orphanUsersCount}</p>
+            <p className="mt-1 text-xs text-[#64748B]">{bannedUsersCount} bloqués · {orphanUsersCount} sans workspace</p>
           </div>
         </section>
+
+        {/* Needs attention — the daily action list */}
+        {attention.length > 0 && (
+          <section className="rounded-2xl border border-[#F0D2C1] bg-white p-4 shadow-[0_10px_28px_rgba(22,23,14,0.055)]">
+            <div className="mb-3 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-[#C75B2E]" />
+              <h2 className="text-base font-semibold">À traiter ({attention.length})</h2>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              {attention.map((item) => (
+                <div key={`${item.workspace.id}-${item.reason}`} className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${ATTENTION_TONE[item.reason]}`}>
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold">{item.workspace.name}</p>
+                    <p className="truncate text-xs opacity-80">{item.workspace.ownerEmail ?? item.workspace.ownerId}</p>
+                  </div>
+                  <span className="shrink-0 text-xs font-medium">{item.detail}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-[0_18px_50px_rgba(22,23,14,0.07)]">
           <div className="border-b border-[#F0EEE8] p-4">
@@ -192,12 +262,7 @@ export default async function AdminPage({
                     </div>
                   </TableCell>
                   <TableCell className="align-top text-sm text-[#475569]">
-                    <p>{workspace.membersCount} membres</p>
-                    <p>{workspace.projectsCount} projets</p>
-                    <p>{workspace.clientsCount} clients</p>
-                    <p>{formatStorage(workspace.storageBytes)}</p>
-                    <p>{workspace.aiCallsThisMonth} appels IA/mois</p>
-                    <p>Dernière activité: {formatDate(workspace.lastActivityAt)}</p>
+                    <UsageLines workspace={workspace} />
                   </TableCell>
                   <TableCell className="align-top">
                     <Badge variant="outline">{PLAN_LIMITS[workspace.plan].label}</Badge>
@@ -385,6 +450,32 @@ export default async function AdminPage({
               ))}
             </TableBody>
           </Table>
+        </section>
+
+        <section className="overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white shadow-[0_18px_50px_rgba(22,23,14,0.07)]">
+          <div className="border-b border-[#F0EEE8] p-4">
+            <div className="flex items-center gap-2">
+              <History className="h-4 w-4 text-[#64748B]" />
+              <h2 className="text-base font-semibold">Journal superadmin</h2>
+            </div>
+            <p className="mt-1 text-sm text-[#64748B]">
+              40 dernières actions superadmin (plans, suspensions, blocages). Traçabilité des contrôles sensibles.
+            </p>
+          </div>
+          {auditEntries.length === 0 ? (
+            <p className="p-6 text-center text-sm text-[#64748B]">Aucune action superadmin enregistrée.</p>
+          ) : (
+            <ul className="divide-y divide-[#F1F5F9]">
+              {auditEntries.map((entry) => (
+                <li key={entry.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm">
+                  <span className="font-medium text-[#0B1220]">{auditActionLabel(entry.action)}</span>
+                  {entry.detail && <span className="text-xs text-[#64748B]">{entry.detail}</span>}
+                  <span className="ml-auto text-xs text-[#ADAB9D]">{entry.actorEmail ?? "—"}</span>
+                  <span className="text-xs text-[#ADAB9D] tabnum">{new Date(entry.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       </div>
     </main>
